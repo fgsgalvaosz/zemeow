@@ -20,6 +20,16 @@ type DB struct {
 	logger logger.Logger
 }
 
+// Connect cria uma nova conexão com o banco usando a configuração completa
+func Connect(cfg *config.Config) (*DB, error) {
+	return New(&cfg.Database)
+}
+
+// Migrate executa as migrações do banco de dados (alias para compatibilidade)
+func Migrate(db *DB) error {
+	return db.Migrate()
+}
+
 // New cria uma nova conexão com o banco de dados
 func New(cfg *config.DatabaseConfig) (*DB, error) {
 	log := logger.Get()

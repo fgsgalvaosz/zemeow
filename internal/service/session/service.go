@@ -34,6 +34,9 @@ type Service interface {
 	SetProxy(ctx context.Context, sessionID string, proxy *ProxyConfig) error
 	SetWebhook(ctx context.Context, sessionID string, webhook *WebhookConfig) error
 
+	// WhatsApp Client Access
+	GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error)
+
 	// Lifecycle
 	Shutdown(ctx context.Context) error
 }
@@ -359,6 +362,30 @@ func (s *SessionService) SetProxy(ctx context.Context, sessionID string, proxy *
 // SetWebhook implementa Service.SetWebhook
 func (s *SessionService) SetWebhook(ctx context.Context, sessionID string, webhook *WebhookConfig) error {
 	return nil
+}
+
+// GetWhatsAppClient implementa Service.GetWhatsAppClient
+func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error) {
+	s.logger.Debug().Str("session_id", sessionID).Msg("Getting WhatsApp client for session")
+
+	// Verificar se sessão existe
+	if exists, _ := s.repository.Exists(sessionID); !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Obter cliente via manager se disponível
+	if manager, ok := s.manager.(interface{ GetClient(string) (interface{}, error) }); ok {
+		client, err := manager.GetClient(sessionID)
+		if err != nil {
+			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get WhatsApp client from manager")
+			return nil, fmt.Errorf("failed to get WhatsApp client: %w", err)
+		}
+		return client, nil
+	}
+
+	// Se manager não estiver disponível, retornar erro
+	s.logger.Warn().Str("session_id", sessionID).Msg("WhatsApp manager not available for client access")
+	return nil, fmt.Errorf("WhatsApp manager not available")
 }
 
 // Shutdown implementa Service.Shutdown

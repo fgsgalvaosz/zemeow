@@ -7,12 +7,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
+
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
-	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types"
 )
 
 // WhatsAppManager gerencia múltiplas sessões WhatsApp de forma thread-safe
@@ -350,49 +353,6 @@ func (m *WhatsAppManager) ListSessions() map[string]*models.Session {
 	return result
 }
 
-// ConnectSession conecta uma sessão específica ao WhatsApp
-func (m *WhatsAppManager) ConnectSession(sessionID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	client, exists := m.clients[sessionID]
-	if !exists {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	// Atualizar status no banco
-	m.repository.UpdateStatus(sessionID, models.SessionStatusConnecting)
-
-	// Conectar cliente
-	if err := client.Connect(); err != nil {
-		m.repository.UpdateStatus(sessionID, models.SessionStatusError)
-		return fmt.Errorf("failed to connect session: %w", err)
-	}
-
-	m.logger.Info().Str("session_id", sessionID).Msg("Session connection initiated")
-	return nil
-}
-
-// DisconnectSession desconecta uma sessão específica
-func (m *WhatsAppManager) DisconnectSession(sessionID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	client, exists := m.clients[sessionID]
-	if !exists {
-		return fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	// Desconectar cliente
-	client.Disconnect()
-
-	// Atualizar status no banco
-	m.repository.UpdateStatus(sessionID, models.SessionStatusDisconnected)
-
-	m.logger.Info().Str("session_id", sessionID).Msg("Session disconnected")
-	return nil
-}
-
 // IsSessionActive verifica se uma sessão está ativa
 func (m *WhatsAppManager) IsSessionActive(sessionID string) bool {
 	m.mu.RLock()
@@ -430,6 +390,8 @@ func (m *WhatsAppManager) GetSessionQRCode(sessionID string) (*QRCodeData, error
 		Timestamp: time.Now(),
 	}, nil
 }
+
+
 
 // initializeSession inicializa uma sessão WhatsApp
 func (m *WhatsAppManager) initializeSession(session *models.Session) error {

@@ -22,10 +22,10 @@ func NewWebhookHandler() *WebhookHandler {
 // SendWebhook envia um webhook manualmente
 // POST /webhooks/send
 func (h *WebhookHandler) SendWebhook(c *fiber.Ctx) error {
-	// Verificar permissões de admin
+	// Verificar permissões globais
 	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil || !authCtx.IsAdmin {
-		return h.sendError(c, "Admin access required", "ADMIN_REQUIRED", fiber.StatusForbidden)
+	if authCtx == nil || !authCtx.IsGlobalKey {
+		return h.sendError(c, "Global access required", "GLOBAL_ACCESS_REQUIRED", fiber.StatusForbidden)
 	}
 
 	var req map[string]interface{}
@@ -91,7 +91,18 @@ func (h *WebhookHandler) GetWebhookServiceStatus(c *fiber.Ctx) error {
 
 // hasSessionAccess verifica se o usuário tem acesso à sessão
 func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
-	return true // Simplificado para permitir acesso
+	authCtx := middleware.GetAuthContext(c)
+	if authCtx == nil {
+		return false
+	}
+
+	// Global key tem acesso a todas as sessões
+	if authCtx.IsGlobalKey {
+		return true
+	}
+
+	// Verificar se a sessão pertence ao usuário autenticado
+	return authCtx.SessionID == sessionID
 }
 
 // sendError envia uma resposta de erro JSON

@@ -9,6 +9,7 @@ import (
 
 	"github.com/felipe/zemeow/internal/api/handlers"
 	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/api/routes"
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
@@ -20,10 +21,7 @@ type Server struct {
 	app            *fiber.App
 	config         *config.Config
 	logger         logger.Logger
-	sessionHandler *handlers.SessionHandler
-	messageHandler *handlers.MessageHandler
-	webhookHandler *handlers.WebhookHandler
-	authMiddleware *middleware.AuthMiddleware
+	router         *routes.Router
 }
 
 // NewServer cria uma nova instância do servidor
@@ -60,80 +58,34 @@ func NewServer(
 	messageHandler := handlers.NewMessageHandler()
 	webhookHandler := handlers.NewWebhookHandler()
 
-	// Criar middleware
+	// Criar middleware de autenticação
 	authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
 
+	// Configurar router
+	routerConfig := &routes.RouterConfig{
+		AuthMiddleware: authMiddleware,
+		SessionHandler: sessionHandler,
+		MessageHandler: messageHandler,
+		WebhookHandler: webhookHandler,
+	}
+	router := routes.NewRouter(app, routerConfig)
+
 	return &Server{
-		app:            app,
-		config:         cfg,
-		logger:         logger.GetWithSession("api_server"),
-		sessionHandler: sessionHandler,
-		messageHandler: messageHandler,
-		webhookHandler: webhookHandler,
-		authMiddleware: authMiddleware,
+		app:    app,
+		config: cfg,
+		logger: logger.GetWithSession("api_server"),
+		router: router,
 	}
 }
 
 // SetupRoutes configura todas as rotas da API
 func (s *Server) SetupRoutes() {
-	// Middleware global
+	// Middleware global de recuperação de pânico
 	s.app.Use(recover.New())
-	s.app.Use(s.authMiddleware.CORS())
-	s.app.Use(s.authMiddleware.RequestLogger())
-
-	// API routes (sem prefixo v1)
-	api := s.app
-
-	// Health check
-	api.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status":    "ok",
-			"timestamp": time.Now().Unix(),
-			"version":   "1.0.0",
-		})
-	})
-
-	// Session routes (acesso global - requer Global API Key)
-	sessions := api.Group("/sessions")
-	sessions.Use(s.authMiddleware.RequireGlobalAPIKey())
-	sessions.Post("/", s.sessionHandler.CreateSession)
-	sessions.Get("/", s.sessionHandler.GetAllSessions)
-	sessions.Get("/active", s.sessionHandler.GetActiveConnections)
-
-	// Session operations (requer Session API Key ou Global API Key)
-	sessions.Use(s.authMiddleware.RequireAPIKey())
-	sessions.Get("/:sessionId", s.sessionHandler.GetSession)
-	sessions.Put("/:sessionId", s.sessionHandler.UpdateSession)
-	sessions.Delete("/:sessionId", s.sessionHandler.DeleteSession)
-	sessions.Post("/:sessionId/connect", s.sessionHandler.ConnectSession)
-	sessions.Post("/:sessionId/disconnect", s.sessionHandler.DisconnectSession)
-	sessions.Post("/:sessionId/logout", s.sessionHandler.LogoutSession)
-	sessions.Post("/:sessionId/pairphone", s.sessionHandler.PairPhone)
-	sessions.Get("/:sessionId/status", s.sessionHandler.GetSessionStatus)
-	sessions.Get("/:sessionId/qr", s.sessionHandler.GetSessionQRCode)
-	sessions.Get("/:sessionId/stats", s.sessionHandler.GetSessionStats)
-
-	// Proxy operations
-	sessions.Post("/:sessionId/proxy", s.sessionHandler.SetProxy)
-	sessions.Get("/:sessionId/proxy", s.sessionHandler.GetProxy)
-	sessions.Post("/:sessionId/proxy/test", s.sessionHandler.TestProxy)
-
-	// Message operations
-	sessions.Post("/:sessionId/messages", s.messageHandler.SendMessage)
-	sessions.Get("/:sessionId/messages", s.messageHandler.GetMessages)
-	sessions.Post("/:sessionId/messages/bulk", s.messageHandler.SendBulkMessages)
-	sessions.Get("/:sessionId/messages/:messageId/status", s.messageHandler.GetMessageStatus)
-
-	// Webhook operations (acesso global)
-	webhooks := api.Group("/webhooks")
-	webhooks.Use(s.authMiddleware.RequireGlobalAPIKey())
-	webhooks.Post("/send", s.webhookHandler.SendWebhook)
-	webhooks.Get("/stats", s.webhookHandler.GetWebhookStats)
-	webhooks.Post("/start", s.webhookHandler.StartWebhookService)
-	webhooks.Post("/stop", s.webhookHandler.StopWebhookService)
-	webhooks.Get("/status", s.webhookHandler.GetWebhookServiceStatus)
-	webhooks.Get("/sessions/:sessionId/stats", s.webhookHandler.GetSessionWebhookStats)
-
+	
+	// Configurar rotas usando o router modular
+	s.router.SetupRoutes()
+	
 	s.logger.Info().Msg("API routes configured successfully")
 }
 

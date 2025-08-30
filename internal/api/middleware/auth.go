@@ -235,17 +235,6 @@ func min(a, b int) int {
 	return b
 }
 
-// CORS middleware
-func (am *AuthMiddleware) CORS() fiber.Handler {
-	return cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS,PATCH",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Admin-Token,token",
-		AllowCredentials: false,
-		ExposeHeaders:    "Content-Length,Content-Range",
-	})
-}
-
 // RequestLogger middleware com suporte a sessionID
 func (am *AuthMiddleware) RequestLogger() fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -259,8 +248,8 @@ func (am *AuthMiddleware) RequestLogger() fiber.Handler {
 		if sessionInfo := GetSessionInfo(c); sessionInfo != nil {
 			sessionID = sessionInfo.SessionID
 		} else if auth := GetAuthContext(c); auth != nil {
-			if auth.IsAdmin {
-				sessionID = "admin"
+			if auth.IsGlobalKey {
+				sessionID = "global"
 			} else if auth.SessionID != "" {
 				sessionID = auth.SessionID
 			}
@@ -304,11 +293,11 @@ func (am *AuthMiddleware) RateLimit(max int) fiber.Handler {
 			}
 			return fmt.Sprintf("ip:%s", c.IP())
 		},
-		LimitReached: func(c *fiber.Ctx) error {
-			am.logger.Warn().
-				Str("ip", c.IP()).
-				Str("path", c.Path()).
-				Msg("Rate limit exceeded")
+			LimitReached: func(c *fiber.Ctx) error {
+				am.logger.Warn().
+					Str("ip", c.IP()).
+					Str("path", c.Path()).
+					Msg("Rate limit exceeded")
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 					"error":   "RATE_LIMIT_EXCEEDED",
 					"message": "Too many requests, please try again later",

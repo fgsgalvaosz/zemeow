@@ -30,10 +30,10 @@ func NewSessionHandler(sessionService session.Service) *SessionHandler {
 // CreateSession cria uma nova sessão WhatsApp
 // POST /sessions
 func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
-	// Verificar permissões de admin
+	// Verificar permissões globais
 	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil || !authCtx.IsAdmin {
-		return h.sendError(c, "Admin access required", "ADMIN_REQUIRED", fiber.StatusForbidden)
+	if authCtx == nil || !authCtx.IsGlobalKey {
+		return h.sendError(c, "Global access required", "GLOBAL_ACCESS_REQUIRED", fiber.StatusForbidden)
 	}
 
 	var req models.CreateSessionRequest
@@ -97,13 +97,13 @@ func (h *SessionHandler) GetSession(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(sessionInfo)
 }
 
-// GetAllSessions lista todas as sessões (apenas admin)
+// GetAllSessions lista todas as sessões (apenas acesso global)
 // GET /sessions
 func (h *SessionHandler) GetAllSessions(c *fiber.Ctx) error {
-	// Verificar permissões de admin
+	// Verificar permissões globais
 	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil || !authCtx.IsAdmin {
-		return h.sendError(c, "Admin access required", "ADMIN_REQUIRED", fiber.StatusForbidden)
+	if authCtx == nil || !authCtx.IsGlobalKey {
+		return h.sendError(c, "Global access required", "GLOBAL_ACCESS_REQUIRED", fiber.StatusForbidden)
 	}
 
 	// Listar sessões
@@ -230,8 +230,8 @@ func (h *SessionHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 		return false
 	}
 
-	// Admin tem acesso a todas as sessões
-	if authCtx.IsAdmin {
+	// Global key tem acesso a todas as sessões
+	if authCtx.IsGlobalKey {
 		return true
 	}
 
