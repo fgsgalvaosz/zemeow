@@ -13,41 +13,32 @@ import (
 	"github.com/google/uuid"
 )
 
-
 type Service interface {
-
 	CreateSession(ctx context.Context, config *Config) (*SessionInfo, error)
 	GetSession(ctx context.Context, sessionID string) (*SessionInfo, error)
 	ListSessions(ctx context.Context) ([]*SessionInfo, error)
 	DeleteSession(ctx context.Context, sessionID string) error
 
-
 	ConnectSession(ctx context.Context, sessionID string) error
 	DisconnectSession(ctx context.Context, sessionID string) error
 	GetSessionStatus(ctx context.Context, sessionID string) (Status, error)
 
-
 	GetQRCode(ctx context.Context, sessionID string) (*QRCodeInfo, error)
 	PairPhone(ctx context.Context, sessionID string, request *PairPhoneRequest) (*PairPhoneResponse, error)
-
 
 	SetProxy(ctx context.Context, sessionID string, proxy *ProxyConfig) error
 	SetWebhook(ctx context.Context, sessionID string, webhook *WebhookConfig) error
 
-
 	GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error)
-
 
 	Shutdown(ctx context.Context) error
 }
-
 
 type SessionService struct {
 	repository repositories.SessionRepository
 	manager    interface{} // WhatsAppManager interface
 	logger     logger.Logger
 }
-
 
 func NewService(repository repositories.SessionRepository, manager interface{}) Service {
 	return &SessionService{
@@ -57,36 +48,29 @@ func NewService(repository repositories.SessionRepository, manager interface{}) 
 	}
 }
 
-
 func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*SessionInfo, error) {
 	s.logger.Info().Str("name", config.Name).Msg("Creating new session")
-
 
 	if err := s.validateConfig(config); err != nil {
 		s.logger.Error().Err(err).Msg("Invalid session configuration")
 		return nil, err
 	}
 
-
 	if config.Name == "" {
 		return nil, fmt.Errorf("session name is required")
 	}
 
-
 	sessionID := uuid.New()
-
 
 	if exists, _ := s.repository.Exists(config.Name); exists {
 		return nil, fmt.Errorf("session name already exists: %s", config.Name)
 	}
-
 
 	apiKey := config.APIKey
 	if apiKey == "" {
 		apiKey = generateAPIKey()
 		s.logger.Info().Str("session_id", sessionID.String()).Str("name", config.Name).Msg("Generated automatic API key for session")
 	}
-
 
 	session := &models.Session{
 		ID:        sessionID,
@@ -97,7 +81,6 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		UpdatedAt: time.Now(),
 		Metadata:  make(models.Metadata),
 	}
-
 
 	if config.Proxy != nil {
 		session.ProxyEnabled = config.Proxy.Enabled
@@ -111,18 +94,27 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		}
 	}
 
-
 	if config.Webhook != nil {
 		session.WebhookURL = &config.Webhook.URL
 		session.WebhookEvents = config.Webhook.Events
 	}
-
 
 	if err := s.repository.Create(session); err != nil {
 		s.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to create session in database")
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
+	// Inicializar sessão no WhatsApp manager
+	if manager, ok := s.manager.(interface {
+		InitializeNewSession(*models.Session) error
+	}); ok {
+		if err := manager.InitializeNewSession(session); err != nil {
+			s.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to initialize session in WhatsApp manager")
+			// Não retornar erro aqui, pois a sessão foi criada no banco
+		} else {
+			s.logger.Info().Str("session_id", session.ID.String()).Msg("Session initialized in WhatsApp manager")
+		}
+	}
 
 	sessionInfo := &SessionInfo{
 		ID:        session.ID.String(),
@@ -137,10 +129,8 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 	return sessionInfo, nil
 }
 
-
 func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*SessionInfo, error) {
 	s.logger.Debug().Str("session_id", sessionID).Msg("Getting session info")
-
 
 	session, err := s.repository.GetByIdentifier(sessionID)
 	if err != nil {
@@ -148,14 +138,12 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*Ses
 		return nil, fmt.Errorf("session not found: %w", err)
 	}
 
-
 	isConnected := false
 	if s.manager != nil {
 		if manager, ok := s.manager.(interface{ IsSessionActive(string) bool }); ok {
 			isConnected = manager.IsSessionActive(sessionID)
 		}
 	}
-
 
 	sessionInfo := &SessionInfo{
 		ID:          sessionID,
@@ -175,10 +163,8 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*Ses
 	return sessionInfo, nil
 }
 
-
 func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, error) {
 	s.logger.Debug().Msg("Listing all sessions")
-
 
 	filter := &models.SessionFilter{
 		Page:    1,
@@ -190,7 +176,6 @@ func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, erro
 		s.logger.Error().Err(err).Msg("Failed to list sessions")
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
-
 
 	sessions := make([]*SessionInfo, len(response.Sessions))
 	for i, session := range response.Sessions {
@@ -221,15 +206,12 @@ func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, erro
 	return sessions, nil
 }
 
-
 func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) error {
 	s.logger.Info().Str("session_id", sessionID).Msg("Deleting session")
-
 
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
 
 	if s.manager != nil {
 		if manager, ok := s.manager.(interface {
@@ -245,7 +227,6 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) er
 		}
 	}
 
-
 	if err := s.repository.DeleteByIdentifier(sessionID); err != nil {
 		s.logger.Error().Err(err).Str("session_identifier", sessionID).Msg("Failed to delete session")
 		return fmt.Errorf("failed to delete session: %w", err)
@@ -255,15 +236,12 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) er
 	return nil
 }
 
-
 func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) error {
 	s.logger.Info().Str("session_id", sessionID).Msg("Connecting session to WhatsApp")
-
 
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
 
 	if manager, ok := s.manager.(interface {
 		ConnectSession(context.Context, string) error
@@ -281,15 +259,12 @@ func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) e
 	return nil
 }
 
-
 func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string) error {
 	s.logger.Info().Str("session_id", sessionID).Msg("Disconnecting session from WhatsApp")
-
 
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-
 
 	if manager, ok := s.manager.(interface{ DisconnectSession(string) error }); ok {
 		if err := manager.DisconnectSession(sessionID); err != nil {
@@ -305,10 +280,8 @@ func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string
 	return nil
 }
 
-
 func (s *SessionService) GetSessionStatus(ctx context.Context, sessionID string) (Status, error) {
 	s.logger.Debug().Str("session_id", sessionID).Msg("Getting session status")
-
 
 	session, err := s.repository.GetByIdentifier(sessionID)
 	if err != nil {
@@ -316,26 +289,21 @@ func (s *SessionService) GetSessionStatus(ctx context.Context, sessionID string)
 		return StatusDisconnected, fmt.Errorf("session not found: %w", err)
 	}
 
-
 	if manager, ok := s.manager.(interface{ IsSessionActive(string) bool }); ok {
 		if manager.IsSessionActive(sessionID) {
 			return StatusConnected, nil
 		}
 	}
 
-
 	return Status(session.Status), nil
 }
-
 
 func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCodeInfo, error) {
 	s.logger.Info().Str("session_id", sessionID).Msg("Getting QR code for session")
 
-
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
-
 
 	if manager, ok := s.manager.(interface {
 		GetQRCode(string) (interface{}, error)
@@ -346,11 +314,9 @@ func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCo
 			return nil, fmt.Errorf("failed to get QR code: %w", err)
 		}
 
-
 		if qrInfo, ok := qrData.(*QRCodeInfo); ok {
 			return qrInfo, nil
 		}
-
 
 		return &QRCodeInfo{
 			Code:      fmt.Sprintf("%v", qrData),
@@ -359,14 +325,12 @@ func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCo
 		}, nil
 	}
 
-
 	return &QRCodeInfo{
 		Code:      "qr_unavailable",
 		Timeout:   60,
 		Timestamp: time.Now(),
 	}, nil
 }
-
 
 func (s *SessionService) PairPhone(ctx context.Context, sessionID string, request *PairPhoneRequest) (*PairPhoneResponse, error) {
 	return &PairPhoneResponse{
@@ -375,25 +339,20 @@ func (s *SessionService) PairPhone(ctx context.Context, sessionID string, reques
 	}, nil
 }
 
-
 func (s *SessionService) SetProxy(ctx context.Context, sessionID string, proxy *ProxyConfig) error {
 	return nil
 }
-
 
 func (s *SessionService) SetWebhook(ctx context.Context, sessionID string, webhook *WebhookConfig) error {
 	return nil
 }
 
-
 func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error) {
 	s.logger.Debug().Str("session_id", sessionID).Msg("Getting WhatsApp client for session")
-
 
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
-
 
 	if manager, ok := s.manager.(interface {
 		GetClient(string) (interface{}, error)
@@ -406,16 +365,13 @@ func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string
 		return client, nil
 	}
 
-
 	s.logger.Warn().Str("session_id", sessionID).Msg("WhatsApp manager not available for client access")
 	return nil, fmt.Errorf("WhatsApp manager not available")
 }
 
-
 func (s *SessionService) Shutdown(ctx context.Context) error {
 	return nil
 }
-
 
 func (s *SessionService) validateConfig(config *Config) error {
 	if config == nil {
@@ -426,7 +382,6 @@ func (s *SessionService) validateConfig(config *Config) error {
 		return fmt.Errorf("session name is required")
 	}
 
-
 	if config.Proxy != nil && config.Proxy.Enabled {
 		if config.Proxy.Host == "" {
 			return fmt.Errorf("proxy host is required when proxy is enabled")
@@ -435,7 +390,6 @@ func (s *SessionService) validateConfig(config *Config) error {
 			return fmt.Errorf("proxy port must be between 1 and 65535")
 		}
 	}
-
 
 	if config.Webhook != nil && config.Webhook.URL != "" {
 		if len(config.Webhook.URL) < 10 {
@@ -446,7 +400,6 @@ func (s *SessionService) validateConfig(config *Config) error {
 	return nil
 }
 
-
 func generateAPIKey() string {
 
 	bytes := make([]byte, 32)
@@ -456,7 +409,6 @@ func generateAPIKey() string {
 	}
 	return "zmw_" + hex.EncodeToString(bytes)
 }
-
 
 func generateSessionID() string {
 	return uuid.New().String()

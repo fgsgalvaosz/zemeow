@@ -392,16 +392,31 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 }
 
 
-func (r *sessionRepository) UpdateStatusAndJID(sessionID string, status models.SessionStatus, jid *string) error {
-	query := `
-		UPDATE sessions
-		SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
-		WHERE session_id = $3
-	`
+func (r *sessionRepository) UpdateStatusAndJID(identifier string, status models.SessionStatus, jid *string) error {
+	var query string
+	var args []interface{}
 
-	result, err := r.db.Exec(query, status, jid, sessionID)
+	// Primeiro tentar como UUID
+	if id, err := uuid.Parse(identifier); err == nil {
+		query = `
+			UPDATE sessions
+			SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
+			WHERE id = $3
+		`
+		args = []interface{}{status, jid, id}
+	} else {
+		// Se não for UUID válido, usar como nome
+		query = `
+			UPDATE sessions
+			SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
+			WHERE name = $3
+		`
+		args = []interface{}{status, jid, identifier}
+	}
+
+	result, err := r.db.Exec(query, args...)
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", sessionID).Str("status", string(status)).Msg("Failed to update session status and JID")
+		r.logger.Error().Err(err).Str("session_identifier", identifier).Str("status", string(status)).Msg("Failed to update session status and JID")
 		return fmt.Errorf("failed to update session status and JID: %w", err)
 	}
 
@@ -418,21 +433,36 @@ func (r *sessionRepository) UpdateStatusAndJID(sessionID string, status models.S
 	if jid != nil {
 		jidStr = *jid
 	}
-	r.logger.Info().Str("session_id", sessionID).Str("status", string(status)).Str("jid", jidStr).Msg("Session status and JID updated successfully")
+	r.logger.Info().Str("session_identifier", identifier).Str("status", string(status)).Str("jid", jidStr).Msg("Session status and JID updated successfully")
 	return nil
 }
 
 
-func (r *sessionRepository) UpdateJID(sessionID string, jid *string) error {
-	query := `
-		UPDATE sessions
-		SET jid = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE session_id = $2
-	`
+func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
+	var query string
+	var args []interface{}
 
-	result, err := r.db.Exec(query, jid, sessionID)
+	// Primeiro tentar como UUID
+	if id, err := uuid.Parse(identifier); err == nil {
+		query = `
+			UPDATE sessions
+			SET jid = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`
+		args = []interface{}{jid, id}
+	} else {
+		// Se não for UUID válido, usar como nome
+		query = `
+			UPDATE sessions
+			SET jid = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE name = $2
+		`
+		args = []interface{}{jid, identifier}
+	}
+
+	result, err := r.db.Exec(query, args...)
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update session JID")
+		r.logger.Error().Err(err).Str("session_identifier", identifier).Msg("Failed to update session JID")
 		return fmt.Errorf("failed to update session JID: %w", err)
 	}
 
@@ -449,7 +479,7 @@ func (r *sessionRepository) UpdateJID(sessionID string, jid *string) error {
 	if jid != nil {
 		jidStr = *jid
 	}
-	r.logger.Info().Str("session_id", sessionID).Str("jid", jidStr).Msg("Session JID updated successfully")
+	r.logger.Info().Str("session_identifier", identifier).Str("jid", jidStr).Msg("Session JID updated successfully")
 	return nil
 }
 
@@ -530,13 +560,26 @@ func (r *sessionRepository) DeleteByIdentifier(identifier string) error {
 }
 
 
-func (r *sessionRepository) Exists(sessionID string) (bool, error) {
-	query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE session_id = $1)"
+// Exists verifica se uma sessão existe (aceita UUID ou nome)
+func (r *sessionRepository) Exists(identifier string) (bool, error) {
+	// Primeiro tentar como UUID
+	if id, err := uuid.Parse(identifier); err == nil {
+		query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1)"
+		var exists bool
+		err := r.db.QueryRow(query, id).Scan(&exists)
+		if err != nil {
+			r.logger.Error().Err(err).Str("session_id", identifier).Msg("Failed to check if session exists by ID")
+			return false, fmt.Errorf("failed to check if session exists: %w", err)
+		}
+		return exists, nil
+	}
 
+	// Se não for UUID válido, tentar como nome
+	query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE name = $1)"
 	var exists bool
-	err := r.db.QueryRow(query, sessionID).Scan(&exists)
+	err := r.db.QueryRow(query, identifier).Scan(&exists)
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to check if session exists")
+		r.logger.Error().Err(err).Str("session_name", identifier).Msg("Failed to check if session exists by name")
 		return false, fmt.Errorf("failed to check if session exists: %w", err)
 	}
 
