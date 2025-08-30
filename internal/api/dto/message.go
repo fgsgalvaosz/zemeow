@@ -4,9 +4,9 @@ import (
 	"time"
 )
 
-// === MESSAGE DTOs ===
 
-// SendTextRequest para envio de mensagem de texto seguindo padrão do sistema de referência
+
+
 type SendTextRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Text        string       `json:"text" validate:"required,max=4096"`
@@ -14,7 +14,7 @@ type SendTextRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendMediaRequest para envio unificado de mídia (imagem, áudio, vídeo, documento, sticker)
+
 type SendMediaRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Type        MediaType    `json:"type" validate:"required,oneof=image audio video document sticker"`
@@ -26,7 +26,7 @@ type SendMediaRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendLocationRequest para envio de localização
+
 type SendLocationRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Latitude    float64      `json:"latitude" validate:"required,latitude"`
@@ -36,7 +36,7 @@ type SendLocationRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendContactRequest para envio de contato
+
 type SendContactRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Name        string       `json:"name" validate:"required"`
@@ -45,7 +45,7 @@ type SendContactRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// MediaType enumera os tipos de mídia suportados
+
 type MediaType string
 
 const (
@@ -56,21 +56,21 @@ const (
 	MediaTypeSticker  MediaType = "sticker"
 )
 
-// ContextInfo para replies e menções (baseado no sistema de referência)
+
 type ContextInfo struct {
 	StanzaID     *string  `json:"stanza_id,omitempty"`     // Para reply
 	Participant  *string  `json:"participant,omitempty"`   // Para reply em grupo
 	MentionedJID []string `json:"mentioned_jid,omitempty"` // Para menções
 }
 
-// MessageSentResponse resposta padrão para mensagens enviadas (seguindo padrão do ref)
+
 type MessageSentResponse struct {
 	Details   string    `json:"details"`
 	Timestamp time.Time `json:"timestamp"`
 	MessageID string    `json:"message_id"`
 }
 
-// SendMessageRequest requisição genérica para envio de mensagem (mantido para compatibilidade)
+
 type SendMessageRequest struct {
 	To       string                 `json:"to" validate:"required,min=10,max=20"`
 	Type     string                 `json:"type" validate:"oneof=text image audio video document location contact"`
@@ -81,7 +81,7 @@ type SendMessageRequest struct {
 	Options  *MessageOptions        `json:"options,omitempty"`
 }
 
-// MessageMedia estrutura para mídia da mensagem
+
 type MessageMedia struct {
 	URL      string `json:"url,omitempty" validate:"omitempty,url"`
 	Data     string `json:"data,omitempty"` // Base64 encoded
@@ -90,7 +90,7 @@ type MessageMedia struct {
 	Filename string `json:"filename,omitempty"`
 }
 
-// MessageLocation estrutura para localização
+
 type MessageLocation struct {
 	Latitude  float64 `json:"latitude" validate:"required,latitude"`
 	Longitude float64 `json:"longitude" validate:"required,longitude"`
@@ -98,7 +98,7 @@ type MessageLocation struct {
 	Address   string  `json:"address,omitempty"`
 }
 
-// MessageContact estrutura para contato
+
 type MessageContact struct {
 	Name         string `json:"name" validate:"required"`
 	PhoneNumber  string `json:"phone_number" validate:"required,e164"`
@@ -106,7 +106,7 @@ type MessageContact struct {
 	Email        string `json:"email,omitempty" validate:"omitempty,email"`
 }
 
-// MessageOptions opções adicionais da mensagem
+
 type MessageOptions struct {
 	DisablePreview   bool   `json:"disable_preview,omitempty"`
 	DisableNotification bool `json:"disable_notification,omitempty"`
@@ -114,7 +114,7 @@ type MessageOptions struct {
 	Ephemeral        bool   `json:"ephemeral,omitempty"`
 }
 
-// SendMessageResponse resposta do envio de mensagem
+
 type SendMessageResponse struct {
 	MessageID   string    `json:"message_id"`
 	SessionID   string    `json:"session_id"`
@@ -126,20 +126,20 @@ type SendMessageResponse struct {
 	ReadAt      *time.Time `json:"read_at,omitempty"`
 }
 
-// BulkMessageRequest requisição para envio em lote
+
 type BulkMessageRequest struct {
 	Messages []SendMessageRequest `json:"messages" validate:"required,min=1,max=100,dive"`
 	Options  *BulkOptions         `json:"options,omitempty"`
 }
 
-// BulkOptions opções para envio em lote
+
 type BulkOptions struct {
 	DelayBetweenMessages int  `json:"delay_between_messages,omitempty" validate:"min=0,max=60"`
 	StopOnError          bool `json:"stop_on_error,omitempty"`
 	MaxRetries           int  `json:"max_retries,omitempty" validate:"min=0,max=5"`
 }
 
-// BulkMessageResponse resposta do envio em lote
+
 type BulkMessageResponse struct {
 	BatchID      string                 `json:"batch_id"`
 	SessionID    string                 `json:"session_id"`
@@ -152,7 +152,7 @@ type BulkMessageResponse struct {
 	CompletedAt  *time.Time             `json:"completed_at,omitempty"`
 }
 
-// BulkMessageError erro em envio em lote
+
 type BulkMessageError struct {
 	Index   int    `json:"index"`
 	To      string `json:"to"`
@@ -160,7 +160,7 @@ type BulkMessageError struct {
 	Message string `json:"message"`
 }
 
-// MessageStatusResponse resposta do status da mensagem
+
 type MessageStatusResponse struct {
 	MessageID   string     `json:"message_id"`
 	SessionID   string     `json:"session_id"`
@@ -173,7 +173,7 @@ type MessageStatusResponse struct {
 	Error       string     `json:"error,omitempty"`
 }
 
-// MessageListRequest requisição para listar mensagens
+
 type MessageListRequest struct {
 	Limit       int    `query:"limit" validate:"min=1,max=100"`
 	Offset      int    `query:"offset" validate:"min=0"`
@@ -186,14 +186,14 @@ type MessageListRequest struct {
 	SearchText  string `query:"search" validate:"omitempty,max=100"`
 }
 
-// MessageListResponse resposta da lista de mensagens
+
 type MessageListResponse struct {
 	SessionID string            `json:"session_id"`
 	Messages  []MessageResponse `json:"messages"`
 	Total     int               `json:"total"`
 }
 
-// MessageResponse estrutura de resposta de mensagem
+
 type MessageResponse struct {
 	ID          string     `json:"id"`
 	MessageID   string     `json:"message_id"`
@@ -212,9 +212,9 @@ type MessageResponse struct {
 	SentAt      *time.Time `json:"sent_at,omitempty"`
 }
 
-// === NOVOS DTOs PARA ENDPOINTS FALTANTES ===
 
-// SendImageRequest para envio de imagem
+
+
 type SendImageRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Image       string       `json:"image" validate:"required"` // Base64 ou URL
@@ -223,7 +223,7 @@ type SendImageRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendAudioRequest para envio de áudio
+
 type SendAudioRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Audio       string       `json:"audio" validate:"required"` // Base64 ou URL
@@ -231,7 +231,7 @@ type SendAudioRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendDocumentRequest para envio de documento
+
 type SendDocumentRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Document    string       `json:"document" validate:"required"` // Base64 ou URL
@@ -241,7 +241,7 @@ type SendDocumentRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendVideoRequest para envio de vídeo
+
 type SendVideoRequest struct {
 	To          string       `json:"to" validate:"required"`
 	Video       string       `json:"video" validate:"required"` // Base64 ou URL
@@ -250,7 +250,7 @@ type SendVideoRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// SendStickerRequest para envio de sticker
+
 type SendStickerRequest struct {
 	To          string       `json:"to" validate:"required,min=10,max=20"` // Validação de telefone
 	Sticker     string       `json:"sticker" validate:"required,min=10"`   // Base64 ou URL
@@ -258,59 +258,122 @@ type SendStickerRequest struct {
 	ContextInfo *ContextInfo `json:"context_info,omitempty"`
 }
 
-// ReactRequest para reagir a mensagem
+
 type ReactRequest struct {
 	To        string `json:"to" validate:"required"`
 	MessageID string `json:"message_id" validate:"required"`
 	Emoji     string `json:"emoji" validate:"required,max=10"`
 }
 
-// DeleteMessageRequest para deletar mensagem
+
 type DeleteMessageRequest struct {
 	To        string `json:"to" validate:"required"`
 	MessageID string `json:"message_id" validate:"required"`
 	ForAll    bool   `json:"for_all,omitempty"`
 }
 
-// === DTOs PARA OPERAÇÕES DE CHAT ===
 
-// ChatPresenceRequest para definir presença no chat
+
+
 type ChatPresenceRequest struct {
 	To       string `json:"to" validate:"required"`
 	Presence string `json:"presence" validate:"required,oneof=available unavailable composing recording paused"`
 }
 
-// MarkReadRequest para marcar mensagens como lidas
+
 type MarkReadRequest struct {
 	To        string   `json:"to" validate:"required"`
 	MessageID []string `json:"message_id,omitempty"`
 }
 
-// DownloadMediaRequest para download de mídia
+
 type DownloadMediaRequest struct {
 	MessageID string `json:"message_id" validate:"required"`
 	Type      string `json:"type" validate:"required,oneof=image video audio document"`
 }
 
-// === DTOs PARA OPERAÇÕES DE SESSÃO (WHATSAPP) ===
 
-// SessionPresenceRequest para definir presença da sessão
+
+
 type SessionPresenceRequest struct {
 	Presence string `json:"presence" validate:"required,oneof=available unavailable"`
 }
 
-// ContactInfoRequest para obter informações de contato
+
 type ContactInfoRequest struct {
 	Phone string `json:"phone" validate:"required,min=10,max=20"` // Validação de telefone
 }
 
-// CheckContactRequest para verificar se contatos existem
+
 type CheckContactRequest struct {
 	Phone []string `json:"phone" validate:"required,min=1,max=50,dive,min=10,max=20"` // Máximo 50 números
 }
 
-// ContactAvatarRequest para obter avatar de contato
+
 type ContactAvatarRequest struct {
 	Phone string `json:"phone" validate:"required,min=10,max=20"` // Validação de telefone
+}
+
+
+
+
+type SendButtonsRequest struct {
+	To          string       `json:"to" validate:"required,min=10,max=20"`
+	Text        string       `json:"text" validate:"required,min=1,max=4096"`
+	Footer      string       `json:"footer,omitempty" validate:"max=60"`
+	Buttons     []Button     `json:"buttons" validate:"required,min=1,max=3,dive"`
+	MessageID   string       `json:"message_id,omitempty" validate:"omitempty,max=100"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+
+type Button struct {
+	ID    string `json:"id" validate:"required,min=1,max=256"`
+	Text  string `json:"text" validate:"required,min=1,max=20"`
+	Type  string `json:"type,omitempty" validate:"omitempty,oneof=reply url call"`
+	URL   string `json:"url,omitempty" validate:"omitempty,url"`
+	Phone string `json:"phone,omitempty" validate:"omitempty,min=10,max=20"`
+}
+
+
+type SendListRequest struct {
+	To          string       `json:"to" validate:"required,min=10,max=20"`
+	Text        string       `json:"text" validate:"required,min=1,max=1024"`
+	Footer      string       `json:"footer,omitempty" validate:"max=60"`
+	Title       string       `json:"title" validate:"required,min=1,max=60"`
+	ButtonText  string       `json:"button_text" validate:"required,min=1,max=20"`
+	Sections    []Section    `json:"sections" validate:"required,min=1,max=10,dive"`
+	MessageID   string       `json:"message_id,omitempty" validate:"omitempty,max=100"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+
+type Section struct {
+	Title string     `json:"title" validate:"required,min=1,max=24"`
+	Rows  []ListRow  `json:"rows" validate:"required,min=1,max=10,dive"`
+}
+
+
+type ListRow struct {
+	ID          string `json:"id" validate:"required,min=1,max=200"`
+	Title       string `json:"title" validate:"required,min=1,max=24"`
+	Description string `json:"description,omitempty" validate:"max=72"`
+}
+
+
+type SendPollRequest struct {
+	To          string       `json:"to" validate:"required,min=10,max=20"`
+	Name        string       `json:"name" validate:"required,min=1,max=140"`
+	Options     []string     `json:"options" validate:"required,min=2,max=12,dive,min=1,max=100"`
+	Selectable  int          `json:"selectable,omitempty" validate:"omitempty,min=1,max=12"`
+	MessageID   string       `json:"message_id,omitempty" validate:"omitempty,max=100"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+
+type EditMessageRequest struct {
+	To        string `json:"to" validate:"required,min=10,max=20"`
+	MessageID string `json:"message_id" validate:"required"`
+	Text      string `json:"text" validate:"required,min=1,max=4096"`
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config contém todas as configurações da aplicação
+
 type Config struct {
 	Database DatabaseConfig
 	Server   ServerConfig
@@ -21,7 +21,7 @@ type Config struct {
 	Webhook  WebhookConfig
 }
 
-// DatabaseConfig configurações do banco de dados
+
 type DatabaseConfig struct {
 	Host            string
 	Port            int
@@ -36,7 +36,7 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime time.Duration
 }
 
-// ServerConfig configurações do servidor HTTP
+
 type ServerConfig struct {
 	Host         string
 	Port         int
@@ -46,36 +46,36 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
-// AuthConfig configurações de autenticação
+
 type AuthConfig struct {
 	AdminAPIKey string
 }
 
-// WhatsAppConfig configurações do WhatsApp
+
 type WhatsAppConfig struct {
 	Timeout           time.Duration
 	ReconnectInterval time.Duration
 	QRCodeTimeout     time.Duration
 }
 
-// LoggingConfig configurações de logging
+
 type LoggingConfig struct {
 	Level  string
 	Pretty bool
 }
 
-// WebhookConfig configurações de webhook
+
 type WebhookConfig struct {
 	Timeout       time.Duration
 	RetryCount    int
 	RetryInterval time.Duration
 }
 
-// Load carrega as configurações das variáveis de ambiente
+
 func Load() (*Config, error) {
-	// Tentar carregar .env se existir
+
 	if err := godotenv.Load(); err != nil {
-		// Não é um erro crítico se .env não existir
+
 		fmt.Printf("Warning: .env file not found: %v\n", err)
 	}
 
@@ -120,7 +120,7 @@ func Load() (*Config, error) {
 		},
 	}
 
-	// Construir URL do banco se não fornecida
+
 	if config.Database.URL == "" {
 		config.Database.URL = fmt.Sprintf(
 			"postgres://%s:%s@%s:%d/%s?sslmode=%s",
@@ -136,7 +136,7 @@ func Load() (*Config, error) {
 	return config, nil
 }
 
-// Validate valida as configurações
+
 func (c *Config) Validate() error {
 	if c.Database.Host == "" {
 		return fmt.Errorf("database host is required")
@@ -153,22 +153,22 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// IsDevelopment retorna true se estiver em ambiente de desenvolvimento
+
 func (c *Config) IsDevelopment() bool {
 	return c.Server.Environment == "development"
 }
 
-// IsProduction retorna true se estiver em ambiente de produção
+
 func (c *Config) IsProduction() bool {
 	return c.Server.Environment == "production"
 }
 
-// GetServerAddress retorna o endereço completo do servidor
+
 func (c *Config) GetServerAddress() string {
 	return net.JoinHostPort(c.Server.Host, fmt.Sprintf("%d", c.Server.Port))
 }
 
-// Helper functions
+
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -196,11 +196,11 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 
 func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
-		// Tentar parsear como duração (ex: "30s", "5m")
+
 		if duration, err := time.ParseDuration(value); err == nil {
 			return duration
 		}
-		// Tentar parsear como segundos
+
 		if seconds, err := strconv.Atoi(value); err == nil {
 			return time.Duration(seconds) * time.Second
 		}

@@ -22,14 +22,144 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/health": {
+            "get": {
+                "description": "Verifica o status da API",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health Check",
+                "responses": {
+                    "200": {
+                        "description": "API funcionando corretamente",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Lista todas as sessões com paginação e filtros opcionais",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Listar todas as sessões",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Número da página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Itens por página",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "connected",
+                            "disconnected",
+                            "connecting",
+                            "error"
+                        ],
+                        "type": "string",
+                        "description": "Filtrar por status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por nome",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de sessões",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/active": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Lista todas as sessões atualmente conectadas ao WhatsApp",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Listar conexões ativas",
+                "responses": {
+                    "200": {
+                        "description": "Lista de conexões ativas",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/add": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Cria uma nova sessão WhatsApp com configurações opcionais de proxy e webhook",
+                "description": "Cria uma nova sessão WhatsApp com configurações opcionais de proxy e webhook. Campos opcionais: session_id (será gerado automaticamente se não fornecido), api_key (será gerada automaticamente se não fornecida), proxy (configuração de proxy), webhook (configuração de webhook)",
                 "consumes": [
                     "application/json"
                 ],
@@ -42,12 +172,12 @@
                 "summary": "Criar nova sessão WhatsApp",
                 "parameters": [
                     {
-                        "description": "Dados da sessão",
+                        "description": "Dados da sessão - Exemplo mínimo: {\\",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.CreateSessionRequest"
+                            "$ref": "#/definitions/dto.CreateSessionRequest"
                         }
                     }
                 ],
@@ -60,7 +190,7 @@
                         }
                     },
                     "400": {
-                        "description": "Dados inválidos",
+                        "description": "Dados inválidos - Verifique se a porta do proxy está entre 1-65535",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -120,6 +250,171 @@
                     },
                     "404": {
                         "description": "Sessão não encontrada",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}/connect": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Inicia a conexão WhatsApp para a sessão",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Conectar sessão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Conexão iniciada com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Sessão já conectada ou erro de validação",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Sessão não encontrada",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}/disconnect": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Desconecta a sessão do WhatsApp",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Desconectar sessão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sessão desconectada com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Sessão não encontrada",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}/group/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Cria um novo grupo WhatsApp com participantes especificados",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "groups"
+                ],
+                "summary": "Criar novo grupo WhatsApp",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados do grupo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Grupo criado com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -247,6 +542,90 @@
                     }
                 }
             }
+        },
+        "/webhooks/send": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Envia um webhook manualmente para teste",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Enviar webhook manualmente",
+                "parameters": [
+                    {
+                        "description": "Payload do webhook",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Webhook enviado com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/stats": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Retorna estatísticas globais de webhooks enviados",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Obter estatísticas de webhooks",
+                "responses": {
+                    "200": {
+                        "description": "Estatísticas de webhooks",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -267,6 +646,92 @@
                 "stanza_id": {
                     "description": "Para reply",
                     "type": "string"
+                }
+            }
+        },
+        "dto.CreateGroupRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "participants"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 25,
+                    "minLength": 1
+                },
+                "participants": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "dto.CreateSessionRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "minLength": 32,
+                    "example": "zmw_1234567890abcdef1234567890abcdef"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "example": "Minha Sessão WhatsApp"
+                },
+                "proxy": {
+                    "$ref": "#/definitions/dto.ProxyConfig"
+                },
+                "session_id": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3,
+                    "example": "sessao123"
+                },
+                "webhook": {
+                    "$ref": "#/definitions/dto.WebhookConfig"
+                }
+            }
+        },
+        "dto.ProxyConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "host": {
+                    "type": "string",
+                    "example": "proxy.example.com"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "senha_proxy"
+                },
+                "port": {
+                    "type": "integer",
+                    "example": 8080
+                },
+                "type": {
+                    "description": "http, socks5",
+                    "type": "string",
+                    "example": "http"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "usuario_proxy"
                 }
             }
         },
@@ -292,64 +757,26 @@
                 }
             }
         },
-        "handlers.CreateSessionRequest": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "proxy": {
-                    "$ref": "#/definitions/session.ProxyConfig"
-                },
-                "session_id": {
-                    "type": "string"
-                },
-                "webhook": {
-                    "$ref": "#/definitions/session.WebhookConfig"
-                }
-            }
-        },
-        "session.ProxyConfig": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "type": {
-                    "description": "http, socks5",
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "session.WebhookConfig": {
+        "dto.WebhookConfig": {
             "type": "object",
             "properties": {
                 "events": {
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "example": [
+                        "message",
+                        "status"
+                    ]
                 },
                 "secret": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "meu_webhook_secret_123"
                 },
                 "url": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "https://meusite.com/webhook"
                 }
             }
         }

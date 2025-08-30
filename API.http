@@ -1,0 +1,137 @@
+### ZeMeow API - Testes
+
+@baseUrl = http://localhost:8080
+@adminApiKey = test123
+@sessionId = {{createSession.response.body.session.id}}
+@messageId = {{sendMessageText.response.body.message_id}}
+
+## Health Check
+GET {{baseUrl}}/health
+
+###
+
+## Criar Sessão (requer API Key global)
+# @name createSession
+POST {{baseUrl}}/sessions
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "name": "Test Session",
+  "webhook": "https://webhook.site/test"
+}
+
+###
+
+## Listar Todas as Sessões
+GET {{baseUrl}}/sessions
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Obter Detalhes da Sessão
+GET {{baseUrl}}/sessions/{{sessionId}}
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Atualizar Sessão
+PUT {{baseUrl}}/sessions/{{sessionId}}
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "name": "Updated Test Session",
+  "webhook": "https://webhook.site/updated"
+}
+
+###
+
+## Conectar Sessão (obter QR Code)
+GET {{baseUrl}}/sessions/{{sessionId}}/qr
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Status da Sessão
+GET {{baseUrl}}/sessions/{{sessionId}}/status
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Estatísticas da Sessão
+GET {{baseUrl}}/sessions/{{sessionId}}/stats
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Enviar Mensagem de Texto
+# @name sendMessageText
+POST {{baseUrl}}/sessions/{{sessionId}}/send/text
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "to": "+5511999999999",
+  "text": "Olá! Esta é uma mensagem de teste da API ZeMeow.",
+  "message_id": "msg_123456789"
+}
+
+###
+
+## Enviar Mídia (imagem como exemplo)
+POST {{baseUrl}}/sessions/{{sessionId}}/send/media
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "to": "+5511999999999",
+  "type": "image",
+  "media": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+  "caption": "Imagem de teste"
+}
+
+###
+
+## Enviar Localização
+POST {{baseUrl}}/sessions/{{sessionId}}/send/location
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "to": "+5511999999999",
+  "latitude": -23.550520,
+  "longitude": -46.633308,
+  "name": "São Paulo"
+}
+
+###
+
+## Enviar Contato
+POST {{baseUrl}}/sessions/{{sessionId}}/send/contact
+Content-Type: application/json
+X-API-Key: {{adminApiKey}}
+
+{
+  "to": "+5511999999999",
+  "name": "Contato de Teste",
+  "vcard": "BEGIN:VCARD\nVERSION:3.0\nFN:Contato de Teste\nTEL;TYPE=CELL:+5511999999999\nEND:VCARD"
+}
+
+###
+
+## Desconectar Sessão
+POST {{baseUrl}}/sessions/{{sessionId}}/disconnect
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Logout da Sessão
+POST {{baseUrl}}/sessions/{{sessionId}}/logout
+X-API-Key: {{adminApiKey}}
+
+###
+
+## Deletar Sessão
+DELETE {{baseUrl}}/sessions/{{sessionId}}
+X-API-Key: {{adminApiKey}}

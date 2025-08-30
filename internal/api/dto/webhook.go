@@ -2,9 +2,9 @@ package dto
 
 import "time"
 
-// === WEBHOOK DTOs ===
 
-// WebhookRequest requisição manual de webhook
+
+
 type WebhookRequest struct {
 	URL     string                 `json:"url" validate:"required,url"`
 	Method  string                 `json:"method" validate:"oneof=POST PUT PATCH"`
@@ -13,14 +13,14 @@ type WebhookRequest struct {
 	Retry   *WebhookRetryConfig    `json:"retry,omitempty"`
 }
 
-// WebhookRetryConfig configuração de retry para webhook
+
 type WebhookRetryConfig struct {
 	MaxRetries    int   `json:"max_retries" validate:"min=0,max=10"`
 	RetryInterval int   `json:"retry_interval" validate:"min=1,max=3600"` // seconds
 	BackoffFactor float64 `json:"backoff_factor" validate:"min=1,max=10"`
 }
 
-// WebhookResponse resposta do webhook
+
 type WebhookResponse struct {
 	ID          string            `json:"id"`
 	URL         string            `json:"url"`
@@ -36,7 +36,7 @@ type WebhookResponse struct {
 	CompletedAt time.Time         `json:"completed_at"`
 }
 
-// WebhookStatsResponse estatísticas de webhooks
+
 type WebhookStatsResponse struct {
 	TotalSent         int64   `json:"total_sent"`
 	TotalSuccessful   int64   `json:"total_successful"`
@@ -47,7 +47,7 @@ type WebhookStatsResponse struct {
 	TopFailureReasons []FailureReason `json:"top_failure_reasons,omitempty"`
 }
 
-// WebhookStats24h estatísticas das últimas 24 horas
+
 type WebhookStats24h struct {
 	Sent       int64   `json:"sent"`
 	Successful int64   `json:"successful"`
@@ -55,13 +55,13 @@ type WebhookStats24h struct {
 	SuccessRate float64 `json:"success_rate"`
 }
 
-// FailureReason razões de falha mais comuns
+
 type FailureReason struct {
 	Reason string `json:"reason"`
 	Count  int64  `json:"count"`
 }
 
-// SessionWebhookStatsResponse estatísticas de webhook por sessão
+
 type SessionWebhookStatsResponse struct {
 	SessionID    string      `json:"session_id"`
 	TotalSent    int64       `json:"total_sent"`
@@ -72,7 +72,7 @@ type SessionWebhookStatsResponse struct {
 	Events       []string    `json:"events,omitempty"`
 }
 
-// WebhookServiceStatusResponse status do serviço de webhook
+
 type WebhookServiceStatusResponse struct {
 	Running        bool      `json:"running"`
 	StartedAt      *time.Time `json:"started_at,omitempty"`
@@ -83,12 +83,12 @@ type WebhookServiceStatusResponse struct {
 	LastProcessed  *time.Time `json:"last_processed,omitempty"`
 }
 
-// WebhookServiceControlRequest requisição para controlar serviço
+
 type WebhookServiceControlRequest struct {
 	Action string `json:"action" validate:"required,oneof=start stop restart"`
 }
 
-// WebhookServiceControlResponse resposta do controle do serviço
+
 type WebhookServiceControlResponse struct {
 	Action    string    `json:"action"`
 	Success   bool      `json:"success"`
@@ -97,14 +97,14 @@ type WebhookServiceControlResponse struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// === AUTH DTOs ===
 
-// AuthValidationRequest requisição de validação de API key
+
+
 type AuthValidationRequest struct {
 	APIKey string `json:"api_key" validate:"required,min=32"`
 }
 
-// AuthValidationResponse resposta da validação
+
 type AuthValidationResponse struct {
 	Valid     bool   `json:"valid"`
 	Type      string `json:"type"` // global, session
@@ -112,7 +112,7 @@ type AuthValidationResponse struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-// AuthStatsResponse estatísticas de autenticação
+
 type AuthStatsResponse struct {
 	TotalKeys       int `json:"total_keys"`
 	GlobalKeys      int `json:"global_keys"`
@@ -121,9 +121,9 @@ type AuthStatsResponse struct {
 	CacheHitRate    float64 `json:"cache_hit_rate,omitempty"`
 }
 
-// === HEALTH DTOs ===
 
-// HealthCheckResponse resposta do health check
+
+
 type HealthCheckResponse struct {
 	Status      string    `json:"status"`
 	Version     string    `json:"version"`
@@ -133,7 +133,7 @@ type HealthCheckResponse struct {
 	Services    map[string]ServiceHealth `json:"services"`
 }
 
-// ServiceHealth status de um serviço específico
+
 type ServiceHealth struct {
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`

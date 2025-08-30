@@ -126,7 +126,7 @@ err := dbConn.Migrate()
 ### Remoção de Sessão
 ```go
 // Remover sessão (limpa tudo automaticamente)
-err := sessionRepo.DeleteBySessionID(sessionID)
+err := sessionRepo.DeleteByName(sessionName)
 ```
 
 **Resultado:**
@@ -149,9 +149,9 @@ WHERE jid NOT IN (SELECT jid FROM whatsmeow_device WHERE jid IS NOT NULL);
 ### Verificar Integridade
 ```sql
 -- Verificar sessions sem device
-SELECT s.session_id, s.jid 
-FROM sessions s 
-LEFT JOIN whatsmeow_device d ON s.jid = d.jid 
+SELECT s.name, s.jid
+FROM sessions s
+LEFT JOIN whatsmeow_device d ON s.jid = d.jid
 WHERE s.jid IS NOT NULL AND d.jid IS NULL;
 
 -- Verificar devices sem session

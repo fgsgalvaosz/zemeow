@@ -24,19 +24,21 @@ services:
       retries: 5
       start_period: 30s
 
-  # Opcional: pgAdmin para administração do banco
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: zemeow_pgadmin
+  # Opcional: DbGate para administração do banco
+  dbgate:
+    image: dbgate/dbgate:latest
+    container_name: zemeow_dbgate
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@zemeow.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      CONNECTIONS: con1
+      LABEL_con1: ZeMeow PostgreSQL
+      SERVER_con1: postgres
+      USER_con1: ${POSTGRES_USER:-zemeow}
+      PASSWORD_con1: ${POSTGRES_PASSWORD:-zemeow123}
+      PORT_con1: 5432
+      ENGINE_con1: postgres@dbgate-plugin-postgres
     ports:
-      - "${PGADMIN_PORT:-8080}:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - "${DBGATE_PORT:-3000}:3000"
     networks:
       - zemeow_network
     depends_on:
@@ -47,8 +49,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  pgadmin_data:
     driver: local
 
 networks:

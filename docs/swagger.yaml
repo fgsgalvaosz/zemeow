@@ -14,6 +14,69 @@ definitions:
         description: Para reply
         type: string
     type: object
+  dto.CreateGroupRequest:
+    properties:
+      description:
+        maxLength: 512
+        type: string
+      name:
+        maxLength: 25
+        minLength: 1
+        type: string
+      participants:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - name
+    - participants
+    type: object
+  dto.CreateSessionRequest:
+    properties:
+      api_key:
+        example: zmw_1234567890abcdef1234567890abcdef
+        minLength: 32
+        type: string
+      name:
+        example: Minha Sessão WhatsApp
+        maxLength: 100
+        minLength: 1
+        type: string
+      proxy:
+        $ref: '#/definitions/dto.ProxyConfig'
+      session_id:
+        example: sessao123
+        maxLength: 50
+        minLength: 3
+        type: string
+      webhook:
+        $ref: '#/definitions/dto.WebhookConfig'
+    required:
+    - name
+    type: object
+  dto.ProxyConfig:
+    properties:
+      enabled:
+        example: true
+        type: boolean
+      host:
+        example: proxy.example.com
+        type: string
+      password:
+        example: senha_proxy
+        type: string
+      port:
+        example: 8080
+        type: integer
+      type:
+        description: http, socks5
+        example: http
+        type: string
+      username:
+        example: usuario_proxy
+        type: string
+    type: object
   dto.SendTextRequest:
     properties:
       context_info:
@@ -29,44 +92,20 @@ definitions:
     - text
     - to
     type: object
-  handlers.CreateSessionRequest:
-    properties:
-      name:
-        type: string
-      proxy:
-        $ref: '#/definitions/session.ProxyConfig'
-      session_id:
-        type: string
-      webhook:
-        $ref: '#/definitions/session.WebhookConfig'
-    required:
-    - name
-    type: object
-  session.ProxyConfig:
-    properties:
-      enabled:
-        type: boolean
-      host:
-        type: string
-      password:
-        type: string
-      port:
-        type: integer
-      type:
-        description: http, socks5
-        type: string
-      username:
-        type: string
-    type: object
-  session.WebhookConfig:
+  dto.WebhookConfig:
     properties:
       events:
+        example:
+        - message
+        - status
         items:
           type: string
         type: array
       secret:
+        example: meu_webhook_secret_123
         type: string
       url:
+        example: https://meusite.com/webhook
         type: string
     type: object
 host: localhost:8080
@@ -83,29 +122,56 @@ info:
   title: Zemeow WhatsApp API
   version: "1.0"
 paths:
-  /sessions:
-    post:
+  /health:
+    get:
       consumes:
       - application/json
-      description: Cria uma nova sessão WhatsApp com configurações opcionais de proxy
-        e webhook
-      parameters:
-      - description: Dados da sessão
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.CreateSessionRequest'
+      description: Verifica o status da API
       produces:
       - application/json
       responses:
-        "201":
-          description: Sessão criada com sucesso
+        "200":
+          description: API funcionando corretamente
           schema:
             additionalProperties: true
             type: object
-        "400":
-          description: Dados inválidos
+      summary: Health Check
+      tags:
+      - health
+  /sessions:
+    get:
+      consumes:
+      - application/json
+      description: Lista todas as sessões com paginação e filtros opcionais
+      parameters:
+      - default: 1
+        description: Número da página
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Itens por página
+        in: query
+        name: per_page
+        type: integer
+      - description: Filtrar por status
+        enum:
+        - connected
+        - disconnected
+        - connecting
+        - error
+        in: query
+        name: status
+        type: string
+      - description: Filtrar por nome
+        in: query
+        name: name
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de sessões
           schema:
             additionalProperties: true
             type: object
@@ -116,7 +182,7 @@ paths:
             type: object
       security:
       - ApiKeyAuth: []
-      summary: Criar nova sessão WhatsApp
+      summary: Listar todas as sessões
       tags:
       - sessions
   /sessions/{sessionId}:
@@ -153,6 +219,114 @@ paths:
       summary: Obter detalhes da sessão
       tags:
       - sessions
+  /sessions/{sessionId}/connect:
+    post:
+      consumes:
+      - application/json
+      description: Inicia a conexão WhatsApp para a sessão
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Conexão iniciada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Sessão já conectada ou erro de validação
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Conectar sessão
+      tags:
+      - sessions
+  /sessions/{sessionId}/disconnect:
+    post:
+      consumes:
+      - application/json
+      description: Desconecta a sessão do WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sessão desconectada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Desconectar sessão
+      tags:
+      - sessions
+  /sessions/{sessionId}/group/create:
+    post:
+      consumes:
+      - application/json
+      description: Cria um novo grupo WhatsApp com participantes especificados
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do grupo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Grupo criado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Criar novo grupo WhatsApp
+      tags:
+      - groups
   /sessions/{sessionId}/qr:
     get:
       consumes:
@@ -232,6 +406,122 @@ paths:
       summary: Enviar mensagem de texto
       tags:
       - messages
+  /sessions/active:
+    get:
+      consumes:
+      - application/json
+      description: Lista todas as sessões atualmente conectadas ao WhatsApp
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de conexões ativas
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Listar conexões ativas
+      tags:
+      - sessions
+  /sessions/add:
+    post:
+      consumes:
+      - application/json
+      description: 'Cria uma nova sessão WhatsApp com configurações opcionais de proxy
+        e webhook. Campos opcionais: session_id (será gerado automaticamente se não
+        fornecido), api_key (será gerada automaticamente se não fornecida), proxy
+        (configuração de proxy), webhook (configuração de webhook)'
+      parameters:
+      - description: 'Dados da sessão - Exemplo mínimo: {\'
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Sessão criada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos - Verifique se a porta do proxy está entre
+            1-65535
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Criar nova sessão WhatsApp
+      tags:
+      - sessions
+  /webhooks/send:
+    post:
+      consumes:
+      - application/json
+      description: Envia um webhook manualmente para teste
+      parameters:
+      - description: Payload do webhook
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Webhook enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar webhook manualmente
+      tags:
+      - webhooks
+  /webhooks/stats:
+    get:
+      consumes:
+      - application/json
+      description: Retorna estatísticas globais de webhooks enviados
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Estatísticas de webhooks
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Obter estatísticas de webhooks
+      tags:
+      - webhooks
 schemes:
 - http
 - https

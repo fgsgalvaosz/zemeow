@@ -32,7 +32,7 @@ type server struct {
 	exPath string
 }
 
-// Replace the global variables
+
 var (
 	address       = flag.String("address", "0.0.0.0", "Bind IP Address")
 	port          = flag.String("port", "8080", "Listen Port")
@@ -63,7 +63,7 @@ func init() {
 
 	flag.Parse()
 
-	// Novo bloco para sobrescrever o osName pelo ENV, se existir
+
 	if v := os.Getenv("SESSION_DEVICE_NAME"); v != "" {
 		*osName = v
 	}
@@ -126,7 +126,7 @@ func init() {
 		if v := os.Getenv("WUZAPI_ADMIN_TOKEN"); v != "" {
 			*adminToken = v
 		} else {
-			// Generate a random token if none provided
+
 			const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 			b := make([]byte, 32)
 			for i := range b {
@@ -137,7 +137,7 @@ func init() {
 		}
 	}
 
-	// Check for global webhook in environment variable
+
 	if *globalWebhook == "" {
 		if v := os.Getenv("WUZAPI_GLOBAL_WEBHOOK"); v != "" {
 			*globalWebhook = v
@@ -161,17 +161,17 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 		os.Exit(1)
 	}
-	// Defer cleanup of the database connection
+
 	defer func() {
 		if err := db.Close(); err != nil {
 			log.Error().Err(err).Msg("Failed to close database connection")
 		}
 	}()
 
-	// Initialize the schema
+
 	if err = initializeSchema(db); err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize schema")
-		// Perform cleanup before exiting
+
 		if err := db.Close(); err != nil {
 			log.Error().Err(err).Msg("Failed to close database connection during cleanup")
 		}
@@ -183,7 +183,7 @@ func main() {
 		dbLog = waLog.Stdout("Database", *waDebug, *colorOutput)
 	}
 
-	// Get database configuration
+
 	config := getDatabaseConfig(exPath)
 	var storeConnStr string
 	if config.Type == "postgres" {
@@ -225,14 +225,14 @@ func main() {
 
 	var once sync.Once
 
-	// Wait for signals in a separate goroutine
+
 	go func() {
 		for {
 			<-done
 			once.Do(func() {
 				log.Warn().Msg("Stopping server...")
 
-				// Graceful shutdown logic
+
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 

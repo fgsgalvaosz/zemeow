@@ -10,7 +10,7 @@ import (
 	"github.com/lib/pq"
 )
 
-// SessionStatus representa os possíveis status de uma sessão
+
 type SessionStatus string
 
 const (
@@ -21,29 +21,58 @@ const (
 	SessionStatusError         SessionStatus = "error"
 )
 
-// Session representa uma sessão WhatsApp no banco de dados
+
 type Session struct {
-	ID              uuid.UUID      `json:"id" db:"id"`
-	SessionID       string         `json:"session_id" db:"session_id"`
-	Name            string         `json:"name" db:"name"`
-	APIKey          string         `json:"api_key" db:"api_key"`
-	// Token           string         `json:"token" db:"token"`  // Removendo a coluna token
-	JID             *string        `json:"jid,omitempty" db:"jid"`
-	Status          SessionStatus  `json:"status" db:"status"`
-	ProxyEnabled    bool           `json:"proxy_enabled" db:"proxy_enabled"`
-	ProxyHost       *string        `json:"proxy_host,omitempty" db:"proxy_host"`
-	ProxyPort       *int           `json:"proxy_port,omitempty" db:"proxy_port"`
-	ProxyUsername   *string        `json:"proxy_username,omitempty" db:"proxy_username"`
-	ProxyPassword   *string        `json:"proxy_password,omitempty" db:"proxy_password"`
-	WebhookURL      *string        `json:"webhook_url,omitempty" db:"webhook_url"`
-	WebhookEvents   pq.StringArray `json:"webhook_events" db:"webhook_events"`
-	CreatedAt       time.Time      `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at" db:"updated_at"`
-	LastConnectedAt *time.Time     `json:"last_connected_at,omitempty" db:"last_connected_at"`
-	Metadata        Metadata       `json:"metadata" db:"metadata"`
+	ID               uuid.UUID      `json:"id" db:"id"`
+	Name             string         `json:"name" db:"name"`
+	APIKey           string         `json:"api_key" db:"api_key"`
+	JID              *string        `json:"jid,omitempty" db:"jid"`
+	Status           SessionStatus  `json:"status" db:"status"`
+	ProxyEnabled     bool           `json:"proxy_enabled" db:"proxy_enabled"`
+	ProxyHost        *string        `json:"proxy_host,omitempty" db:"proxy_host"`
+	ProxyPort        *int           `json:"proxy_port,omitempty" db:"proxy_port"`
+	ProxyUsername    *string        `json:"proxy_username,omitempty" db:"proxy_username"`
+	ProxyPassword    *string        `json:"proxy_password,omitempty" db:"proxy_password"`
+	WebhookURL       *string        `json:"webhook_url,omitempty" db:"webhook_url"`
+	WebhookEvents    pq.StringArray `json:"webhook_events" db:"webhook_events"`
+	CreatedAt        time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at" db:"updated_at"`
+	LastConnectedAt  *time.Time     `json:"last_connected_at,omitempty" db:"last_connected_at"`
+	Metadata         Metadata       `json:"metadata" db:"metadata"`
+	MessagesReceived int            `json:"messages_received" db:"messages_received"`
+	MessagesSent     int            `json:"messages_sent" db:"messages_sent"`
+	Reconnections    int            `json:"reconnections" db:"reconnections"`
+	LastActivity     *time.Time     `json:"last_activity,omitempty" db:"last_activity"`
 }
 
-// SessionConfig representa a configuração de uma sessão
+
+func (s *Session) GetSessionID() string {
+	return s.ID.String()
+}
+
+
+func (s *Session) GetIdentifier() string {
+	return s.ID.String()
+}
+
+
+func (s *Session) IsValidName() bool {
+	if len(s.Name) < 3 || len(s.Name) > 50 {
+		return false
+	}
+
+	for _, char := range s.Name {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_' || char == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+
 type SessionConfig struct {
 	SessionID     string         `json:"session_id"`
 	Name          string         `json:"name"`
@@ -53,7 +82,7 @@ type SessionConfig struct {
 	Timeout       time.Duration  `json:"timeout"`
 }
 
-// ProxyConfig representa a configuração de proxy para uma sessão
+
 type ProxyConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Host     string `json:"host"`
@@ -63,17 +92,17 @@ type ProxyConfig struct {
 	Type     string `json:"type"` // http, socks5
 }
 
-// WebhookConfig representa a configuração de webhook para uma sessão
+
 type WebhookConfig struct {
 	URL    string   `json:"url"`
 	Events []string `json:"events"`
 	Secret string   `json:"secret,omitempty"`
 }
 
-// Metadata representa dados adicionais em formato JSON
+
 type Metadata map[string]interface{}
 
-// Value implementa driver.Valuer para Metadata
+
 func (m Metadata) Value() (driver.Value, error) {
 	if m == nil {
 		return nil, nil
@@ -81,7 +110,7 @@ func (m Metadata) Value() (driver.Value, error) {
 	return json.Marshal(m)
 }
 
-// Scan implementa sql.Scanner para Metadata
+
 func (m *Metadata) Scan(value interface{}) error {
 	if value == nil {
 		*m = make(Metadata)
@@ -98,7 +127,7 @@ func (m *Metadata) Scan(value interface{}) error {
 	}
 }
 
-// CreateSessionRequest representa uma requisição para criar uma nova sessão
+
 type CreateSessionRequest struct {
 	SessionID string         `json:"session_id" validate:"omitempty,min=3,max=255"`
 	Name      string         `json:"name" validate:"required,min=1,max=255"`
@@ -107,15 +136,15 @@ type CreateSessionRequest struct {
 	Webhook   *WebhookConfig `json:"webhook,omitempty"`
 }
 
-// UpdateSessionRequest representa uma requisição para atualizar uma sessão
+
 type UpdateSessionRequest struct {
-	Name      *string        `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Proxy     *ProxyConfig   `json:"proxy,omitempty"`
-	Webhook   *WebhookConfig `json:"webhook,omitempty"`
-	Metadata  *Metadata      `json:"metadata,omitempty"`
+	Name     *string        `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	Proxy    *ProxyConfig   `json:"proxy,omitempty"`
+	Webhook  *WebhookConfig `json:"webhook,omitempty"`
+	Metadata *Metadata      `json:"metadata,omitempty"`
 }
 
-// SessionListResponse representa a resposta da listagem de sessões
+
 type SessionListResponse struct {
 	Sessions   []Session `json:"sessions"`
 	Total      int       `json:"total"`
@@ -124,7 +153,7 @@ type SessionListResponse struct {
 	TotalPages int       `json:"total_pages"`
 }
 
-// SessionInfoResponse representa informações detalhadas de uma sessão
+
 type SessionInfoResponse struct {
 	*Session
 	IsConnected    bool               `json:"is_connected"`
@@ -132,47 +161,47 @@ type SessionInfoResponse struct {
 	Statistics     *SessionStatistics `json:"statistics,omitempty"`
 }
 
-// ConnectionInfo representa informações da conexão WhatsApp
+
 type ConnectionInfo struct {
-	JID           string    `json:"jid"`
-	PushName      string    `json:"push_name"`
-	BusinessName  string    `json:"business_name,omitempty"`
-	ConnectedAt   time.Time `json:"connected_at"`
-	LastSeen      time.Time `json:"last_seen"`
-	BatteryLevel  int       `json:"battery_level,omitempty"`
-	Plugged       bool      `json:"plugged"`
-	Platform      string    `json:"platform"`
+	JID          string    `json:"jid"`
+	PushName     string    `json:"push_name"`
+	BusinessName string    `json:"business_name,omitempty"`
+	ConnectedAt  time.Time `json:"connected_at"`
+	LastSeen     time.Time `json:"last_seen"`
+	BatteryLevel int       `json:"battery_level,omitempty"`
+	Plugged      bool      `json:"plugged"`
+	Platform     string    `json:"platform"`
 }
 
-// SessionStatistics representa estatísticas de uma sessão
+
 type SessionStatistics struct {
-	MessagesReceived int        `json:"messages_received"`
-	MessagesSent     int        `json:"messages_sent"`
-	Uptime           int        `json:"uptime_seconds"`
-	Reconnections    int        `json:"reconnections"`
-	LastActivity     time.Time  `json:"last_activity"`
+	MessagesReceived int       `json:"messages_received"`
+	MessagesSent     int       `json:"messages_sent"`
+	Uptime           int       `json:"uptime_seconds"`
+	Reconnections    int       `json:"reconnections"`
+	LastActivity     time.Time `json:"last_activity"`
 }
 
-// QRCodeResponse representa a resposta do QR Code
+
 type QRCodeResponse struct {
 	QRCode    string    `json:"qr_code"`
 	Timeout   int       `json:"timeout_seconds"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// PairPhoneRequest representa uma requisição para pair por telefone
+
 type PairPhoneRequest struct {
 	PhoneNumber string `json:"phone_number" validate:"required,e164"`
 }
 
-// PairPhoneResponse representa a resposta do pair por telefone
+
 type PairPhoneResponse struct {
 	Code      string    `json:"code"`
 	Timeout   int       `json:"timeout_seconds"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// SessionFilter representa filtros para listagem de sessões
+
 type SessionFilter struct {
 	Status    *SessionStatus `json:"status,omitempty"`
 	Name      *string        `json:"name,omitempty"`
@@ -184,13 +213,13 @@ type SessionFilter struct {
 	OrderDir  string         `json:"order_dir"`
 }
 
-// Validate valida os dados da sessão
+
 func (s *Session) Validate() error {
-	if s.SessionID == "" {
-		return fmt.Errorf("session_id is required")
-	}
 	if s.Name == "" {
 		return fmt.Errorf("name is required")
+	}
+	if !s.IsValidName() {
+		return fmt.Errorf("name must be 3-50 characters and contain only letters, numbers, underscore and hyphen")
 	}
 	if s.APIKey == "" {
 		return fmt.Errorf("api_key is required")
@@ -198,12 +227,12 @@ func (s *Session) Validate() error {
 	return nil
 }
 
-// IsConnected verifica se a sessão está conectada
+
 func (s *Session) IsConnected() bool {
 	return s.Status == SessionStatusConnected || s.Status == SessionStatusAuthenticated
 }
 
-// GetProxyConfig retorna a configuração de proxy
+
 func (s *Session) GetProxyConfig() *ProxyConfig {
 	if !s.ProxyEnabled || s.ProxyHost == nil || s.ProxyPort == nil {
 		return nil
@@ -226,7 +255,7 @@ func (s *Session) GetProxyConfig() *ProxyConfig {
 	return config
 }
 
-// GetWebhookConfig retorna a configuração de webhook
+
 func (s *Session) GetWebhookConfig() *WebhookConfig {
 	if s.WebhookURL == nil {
 		return nil
@@ -238,7 +267,7 @@ func (s *Session) GetWebhookConfig() *WebhookConfig {
 	}
 }
 
-// SetProxyConfig define a configuração de proxy
+
 func (s *Session) SetProxyConfig(config *ProxyConfig) {
 	if config == nil || !config.Enabled {
 		s.ProxyEnabled = false
@@ -261,7 +290,7 @@ func (s *Session) SetProxyConfig(config *ProxyConfig) {
 	}
 }
 
-// SetWebhookConfig define a configuração de webhook
+
 func (s *Session) SetWebhookConfig(config *WebhookConfig) {
 	if config == nil || config.URL == "" {
 		s.WebhookURL = nil
@@ -273,7 +302,7 @@ func (s *Session) SetWebhookConfig(config *WebhookConfig) {
 	s.WebhookEvents = pq.StringArray(config.Events)
 }
 
-// UpdateStatus atualiza o status da sessão
+
 func (s *Session) UpdateStatus(status SessionStatus) {
 	s.Status = status
 	s.UpdatedAt = time.Now()

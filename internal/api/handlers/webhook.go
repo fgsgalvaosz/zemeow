@@ -7,22 +7,32 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
-// WebhookHandler gerencia endpoints de webhooks
+
 type WebhookHandler struct {
 	logger logger.Logger
 }
 
-// NewWebhookHandler cria uma nova instância do handler de webhooks
+
 func NewWebhookHandler() *WebhookHandler {
 	return &WebhookHandler{
 		logger: logger.GetWithSession("webhook_handler"),
 	}
 }
 
-// SendWebhook envia um webhook manualmente
-// POST /webhooks/send
+
+// @Summary Enviar webhook manualmente
+// @Description Envia um webhook manualmente para teste
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param request body map[string]interface{} true "Payload do webhook"
+// @Success 200 {object} map[string]interface{} "Webhook enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /webhooks/send [post]
 func (h *WebhookHandler) SendWebhook(c *fiber.Ctx) error {
-	// Verificar permissões globais
+
 	authCtx := middleware.GetAuthContext(c)
 	if authCtx == nil || !authCtx.IsGlobalKey {
 		return h.sendError(c, "Global access required", "GLOBAL_ACCESS_REQUIRED", fiber.StatusForbidden)
@@ -40,8 +50,15 @@ func (h *WebhookHandler) SendWebhook(c *fiber.Ctx) error {
 	})
 }
 
-// GetWebhookStats obtém estatísticas de webhooks
-// GET /webhooks/stats
+
+// @Summary Obter estatísticas de webhooks
+// @Description Retorna estatísticas globais de webhooks enviados
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Estatísticas de webhooks"
+// @Router /webhooks/stats [get]
 func (h *WebhookHandler) GetWebhookStats(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"total_sent":   0,
@@ -50,8 +67,8 @@ func (h *WebhookHandler) GetWebhookStats(c *fiber.Ctx) error {
 	})
 }
 
-// GetSessionWebhookStats obtém estatísticas de webhooks de uma sessão específica
-// GET /webhooks/sessions/:sessionId/stats
+
+
 func (h *WebhookHandler) GetSessionWebhookStats(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	return c.JSON(fiber.Map{
@@ -62,8 +79,8 @@ func (h *WebhookHandler) GetSessionWebhookStats(c *fiber.Ctx) error {
 	})
 }
 
-// StartWebhookService inicia o serviço de webhooks
-// POST /webhooks/start
+
+
 func (h *WebhookHandler) StartWebhookService(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "started",
@@ -71,8 +88,8 @@ func (h *WebhookHandler) StartWebhookService(c *fiber.Ctx) error {
 	})
 }
 
-// StopWebhookService para o serviço de webhooks
-// POST /webhooks/stop
+
+
 func (h *WebhookHandler) StopWebhookService(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "stopped",
@@ -80,8 +97,8 @@ func (h *WebhookHandler) StopWebhookService(c *fiber.Ctx) error {
 	})
 }
 
-// GetWebhookServiceStatus obtém o status do serviço de webhooks
-// GET /webhooks/status
+
+
 func (h *WebhookHandler) GetWebhookServiceStatus(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"running": true,
@@ -89,23 +106,23 @@ func (h *WebhookHandler) GetWebhookServiceStatus(c *fiber.Ctx) error {
 	})
 }
 
-// hasSessionAccess verifica se o usuário tem acesso à sessão
+
 func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 	authCtx := middleware.GetAuthContext(c)
 	if authCtx == nil {
 		return false
 	}
 
-	// Global key tem acesso a todas as sessões
+
 	if authCtx.IsGlobalKey {
 		return true
 	}
 
-	// Verificar se a sessão pertence ao usuário autenticado
+
 	return authCtx.SessionID == sessionID
 }
 
-// sendError envia uma resposta de erro JSON
+
 func (h *WebhookHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
 	errorResp := fiber.Map{
 		"error":   code,

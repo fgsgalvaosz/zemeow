@@ -11,30 +11,36 @@ import (
 	"github.com/google/uuid"
 )
 
-// SessionRepository interface define as operações do repositório de sessões
+
 type SessionRepository interface {
 	Create(session *models.Session) error
 	GetByID(id uuid.UUID) (*models.Session, error)
-	GetBySessionID(sessionID string) (*models.Session, error)
+	GetBySessionID(sessionID string) (*models.Session, error)             // Busca por UUID string
+	GetByName(name string) (*models.Session, error) // Busca por nome
+	GetByIdentifier(identifier string) (*models.Session, error) // Busca por UUID ou nome (dual mode)
 	GetByAPIKey(apiKey string) (*models.Session, error)
 	GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error)
 	Update(session *models.Session) error
-	UpdateStatus(sessionID string, status models.SessionStatus) error
+	UpdateStatus(identifier string, status models.SessionStatus) error
+	UpdateStatusAndJID(identifier string, status models.SessionStatus, jid *string) error
+	UpdateJID(identifier string, jid *string) error
+	ClearQRCode(identifier string) error
 	Delete(id uuid.UUID) error
-	DeleteBySessionID(sessionID string) error
-	Exists(sessionID string) (bool, error)
+	DeleteByIdentifier(identifier string) error
+	DeleteBySessionID(sessionID string) error // Remove por UUID string
+	Exists(identifier string) (bool, error)
 	Count() (int, error)
 	GetActiveConnections() ([]*models.Session, error)
 	Close() error
 }
 
-// sessionRepository implementa SessionRepository
+
 type sessionRepository struct {
 	db     *sql.DB
 	logger logger.Logger
 }
 
-// NewSessionRepository cria uma nova instância do repositório de sessões
+
 func NewSessionRepository(db *sql.DB) SessionRepository {
 	return &sessionRepository{
 		db:     db,
@@ -42,51 +48,51 @@ func NewSessionRepository(db *sql.DB) SessionRepository {
 	}
 }
 
-// Create cria uma nova sessão no banco de dados
+
 func (r *sessionRepository) Create(session *models.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session data: %w", err)
 	}
 
-	// Gerar ID se não fornecido
+
 	if session.ID == uuid.Nil {
 		session.ID = uuid.New()
 	}
 
-	// Definir timestamps
+
 	now := time.Now()
 	session.CreatedAt = now
 	session.UpdatedAt = now
 
 	query := `
 		INSERT INTO sessions (
-			id, session_id, name, api_key, jid, status,
+			id, name, api_key, jid, status,
 			proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 			webhook_url, webhook_events, created_at, updated_at, metadata
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 		)
 	`
 
 	_, err := r.db.Exec(query,
-		session.ID, session.SessionID, session.Name, session.APIKey, session.JID, session.Status,
+		session.ID, session.Name, session.APIKey, session.JID, session.Status,
 		session.ProxyEnabled, session.ProxyHost, session.ProxyPort, session.ProxyUsername, session.ProxyPassword,
 		session.WebhookURL, session.WebhookEvents, session.CreatedAt, session.UpdatedAt, session.Metadata,
 	)
 
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", session.SessionID).Msg("Failed to create session")
+		r.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to create session")
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
-	r.logger.Info().Str("session_id", session.SessionID).Msg("Session created successfully")
+	r.logger.Info().Str("session_id", session.ID.String()).Msg("Session created successfully")
 	return nil
 }
 
-// GetByID busca uma sessão pelo ID
+
 func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, api_key, jid, status,
+		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions WHERE id = $1
@@ -94,7 +100,7 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 
 	session := &models.Session{}
 	err := r.db.QueryRow(query, id).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
+		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -110,18 +116,30 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	return session, nil
 }
 
-// GetBySessionID busca uma sessão pelo session_id
+
 func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, error) {
+
+	id, err := uuid.Parse(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid session ID format: %w", err)
+	}
+
+
+	return r.GetByID(id)
+}
+
+
+func (r *sessionRepository) GetByName(name string) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, api_key, jid, status,
+		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
-		FROM sessions WHERE session_id = $1
+		FROM sessions WHERE name = $1
 	`
 
 	session := &models.Session{}
-	err := r.db.QueryRow(query, sessionID).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
+	err := r.db.QueryRow(query, name).Scan(
+		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -130,17 +148,28 @@ func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, e
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("session not found")
 		}
-		r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get session by session_id")
+		r.logger.Error().Err(err).Str("name", name).Msg("Failed to get session by name")
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	return session, nil
 }
 
-// GetByAPIKey busca uma sessão pela API key
+
+func (r *sessionRepository) GetByIdentifier(identifier string) (*models.Session, error) {
+
+	if id, err := uuid.Parse(identifier); err == nil {
+		return r.GetByID(id)
+	}
+
+
+	return r.GetByName(identifier)
+}
+
+
 func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, api_key, jid, status,
+		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions WHERE api_key = $1
@@ -148,7 +177,7 @@ func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) 
 
 	session := &models.Session{}
 	err := r.db.QueryRow(query, apiKey).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
+		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -164,13 +193,13 @@ func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) 
 	return session, nil
 }
 
-// GetAll busca todas as sessões com filtros e paginação
+
 func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error) {
 	if filter == nil {
 		filter = &models.SessionFilter{}
 	}
 
-	// Definir valores padrão
+
 	if filter.Page <= 0 {
 		filter.Page = 1
 	}
@@ -184,7 +213,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 		filter.OrderDir = "DESC"
 	}
 
-	// Construir query com filtros
+
 	var conditions []string
 	var args []interface{}
 	argIndex := 1
@@ -218,7 +247,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	// Query para contar total
+
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM sessions %s", whereClause)
 	var total int
 	err := r.db.QueryRow(countQuery, args...).Scan(&total)
@@ -227,10 +256,10 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 		return nil, fmt.Errorf("failed to count sessions: %w", err)
 	}
 
-	// Query principal com paginação
+
 	offset := (filter.Page - 1) * filter.PerPage
 	query := fmt.Sprintf(`
-		SELECT id, session_id, name, api_key, jid, status,
+		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions %s
@@ -251,7 +280,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	for rows.Next() {
 		session := models.Session{}
 		err := rows.Scan(
-			&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
+			&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 			&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 			&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 		)
@@ -278,7 +307,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	}, nil
 }
 
-// Update atualiza uma sessão existente
+
 func (r *sessionRepository) Update(session *models.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session data: %w", err)
@@ -301,7 +330,7 @@ func (r *sessionRepository) Update(session *models.Session) error {
 	)
 
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", session.SessionID).Msg("Failed to update session")
+		r.logger.Error().Err(err).Str("session_name", session.Name).Msg("Failed to update session")
 		return fmt.Errorf("failed to update session: %w", err)
 	}
 
@@ -314,11 +343,11 @@ func (r *sessionRepository) Update(session *models.Session) error {
 		return fmt.Errorf("session not found")
 	}
 
-	r.logger.Info().Str("session_id", session.SessionID).Msg("Session updated successfully")
+	r.logger.Info().Str("session_name", session.Name).Msg("Session updated successfully")
 	return nil
 }
 
-// UpdateStatus atualiza apenas o status de uma sessão
+
 func (r *sessionRepository) UpdateStatus(sessionID string, status models.SessionStatus) error {
 	now := time.Now()
 	var lastConnectedAt *time.Time
@@ -327,11 +356,21 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 		lastConnectedAt = &now
 	}
 
-	query := `
-		UPDATE sessions SET
-			status = $2, updated_at = $3, last_connected_at = COALESCE($4, last_connected_at)
-		WHERE session_id = $1
-	`
+
+	var query string
+	if _, err := uuid.Parse(sessionID); err == nil {
+		query = `
+			UPDATE sessions SET
+				status = $2, updated_at = $3, last_connected_at = COALESCE($4, last_connected_at)
+			WHERE id = $1
+		`
+	} else {
+		query = `
+			UPDATE sessions SET
+				status = $2, updated_at = $3, last_connected_at = COALESCE($4, last_connected_at)
+			WHERE name = $1
+		`
+	}
 
 	result, err := r.db.Exec(query, sessionID, status, now, lastConnectedAt)
 	if err != nil {
@@ -352,7 +391,76 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 	return nil
 }
 
-// Delete remove uma sessão pelo ID
+
+func (r *sessionRepository) UpdateStatusAndJID(sessionID string, status models.SessionStatus, jid *string) error {
+	query := `
+		UPDATE sessions
+		SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
+		WHERE session_id = $3
+	`
+
+	result, err := r.db.Exec(query, status, jid, sessionID)
+	if err != nil {
+		r.logger.Error().Err(err).Str("session_id", sessionID).Str("status", string(status)).Msg("Failed to update session status and JID")
+		return fmt.Errorf("failed to update session status and JID: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	jidStr := "nil"
+	if jid != nil {
+		jidStr = *jid
+	}
+	r.logger.Info().Str("session_id", sessionID).Str("status", string(status)).Str("jid", jidStr).Msg("Session status and JID updated successfully")
+	return nil
+}
+
+
+func (r *sessionRepository) UpdateJID(sessionID string, jid *string) error {
+	query := `
+		UPDATE sessions
+		SET jid = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = $2
+	`
+
+	result, err := r.db.Exec(query, jid, sessionID)
+	if err != nil {
+		r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update session JID")
+		return fmt.Errorf("failed to update session JID: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	jidStr := "nil"
+	if jid != nil {
+		jidStr = *jid
+	}
+	r.logger.Info().Str("session_id", sessionID).Str("jid", jidStr).Msg("Session JID updated successfully")
+	return nil
+}
+
+
+func (r *sessionRepository) ClearQRCode(sessionID string) error {
+
+	r.logger.Info().Str("session_id", sessionID).Msg("QR code cleared (placeholder)")
+	return nil
+}
+
+
 func (r *sessionRepository) Delete(id uuid.UUID) error {
 	query := "DELETE FROM sessions WHERE id = $1"
 
@@ -375,13 +483,25 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-// DeleteBySessionID remove uma sessão pelo session_id
-func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
-	query := "DELETE FROM sessions WHERE session_id = $1"
 
-	result, err := r.db.Exec(query, sessionID)
+func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
+
+	id, err := uuid.Parse(sessionID)
 	if err != nil {
-		r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to delete session")
+		return fmt.Errorf("invalid session ID format: %w", err)
+	}
+
+
+	return r.Delete(id)
+}
+
+
+func (r *sessionRepository) DeleteByName(name string) error {
+	query := "DELETE FROM sessions WHERE name = $1"
+
+	result, err := r.db.Exec(query, name)
+	if err != nil {
+		r.logger.Error().Err(err).Str("name", name).Msg("Failed to delete session by name")
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 
@@ -394,11 +514,22 @@ func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
 		return fmt.Errorf("session not found")
 	}
 
-	r.logger.Info().Str("session_id", sessionID).Msg("Session deleted successfully")
+	r.logger.Info().Str("name", name).Msg("Session deleted successfully")
 	return nil
 }
 
-// Exists verifica se uma sessão existe
+
+func (r *sessionRepository) DeleteByIdentifier(identifier string) error {
+
+	if id, err := uuid.Parse(identifier); err == nil {
+		return r.Delete(id)
+	}
+
+
+	return r.DeleteByName(identifier)
+}
+
+
 func (r *sessionRepository) Exists(sessionID string) (bool, error) {
 	query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE session_id = $1)"
 
@@ -412,7 +543,7 @@ func (r *sessionRepository) Exists(sessionID string) (bool, error) {
 	return exists, nil
 }
 
-// Count retorna o número total de sessões
+
 func (r *sessionRepository) Count() (int, error) {
 	query := "SELECT COUNT(*) FROM sessions"
 
@@ -426,10 +557,10 @@ func (r *sessionRepository) Count() (int, error) {
 	return count, nil
 }
 
-// GetActiveConnections retorna conexões ativas no banco de dados
+
 func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, api_key, jid, status,
+		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions WHERE status IN ('connected', 'authenticated')
@@ -447,7 +578,7 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	for rows.Next() {
 		session := &models.Session{}
 		err := rows.Scan(
-			&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
+			&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 			&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 			&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 		)
@@ -467,7 +598,7 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	return sessions, nil
 }
 
-// Close fecha a conexão com o banco de dados
+
 func (r *sessionRepository) Close() error {
 	return r.db.Close()
 }

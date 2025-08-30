@@ -1,6 +1,7 @@
 package meow
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
-// WebhookEvent representa um evento para webhook
+
 type WebhookEvent struct {
 	SessionID string      `json:"session_id"`
 	Event     string      `json:"event"`
@@ -21,14 +22,14 @@ type WebhookEvent struct {
 	Timestamp time.Time   `json:"timestamp"`
 }
 
-// QRCodeData representa os dados do QR Code
+
 type QRCodeData struct {
 	Code      string    `json:"code"`
 	Timeout   int       `json:"timeout"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// ConnectionInfo representa informações de conexão
+
 type ConnectionInfo struct {
 	JID          string    `json:"jid"`
 	PushName     string    `json:"push_name"`
@@ -39,7 +40,7 @@ type ConnectionInfo struct {
 	Plugged      bool      `json:"plugged,omitempty"`
 }
 
-// MyClient representa um cliente WhatsApp personalizado para uma sessão
+
 type MyClient struct {
 	mu            sync.RWMutex
 	sessionID     string
@@ -50,14 +51,17 @@ type MyClient struct {
 	logger        logger.Logger
 	webhookChan   chan<- WebhookEvent
 
-	// Estatísticas
+
+	onPairSuccess func(sessionID, jid string)
+
+
 	messagesReceived int64
 	messagesSent     int64
 	reconnections    int64
 	lastActivity     time.Time
 }
 
-// NewMyClient cria um novo cliente personalizado
+
 func NewMyClient(sessionID string, deviceStore *store.Device, webhookChan chan<- WebhookEvent) *MyClient {
 	clientLogger := logger.GetWhatsAppLogger(sessionID)
 
@@ -73,19 +77,26 @@ func NewMyClient(sessionID string, deviceStore *store.Device, webhookChan chan<-
 		lastActivity:  time.Now(),
 	}
 
-	// Configurar event handlers padrão
+
 	myClient.setupDefaultEventHandlers()
 
 	return myClient
 }
 
-// setupDefaultEventHandlers configura os event handlers padrão
+
+func (c *MyClient) SetOnPairSuccess(callback func(sessionID, jid string)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onPairSuccess = callback
+}
+
+
 func (c *MyClient) setupDefaultEventHandlers() {
-	// Handler único com type switch para todos os eventos
+
 	c.client.AddEventHandler(c.handleEvent)
 }
 
-// handleEvent processa todos os tipos de eventos
+
 func (c *MyClient) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Connected:
@@ -97,7 +108,7 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		c.logger.Info().Msg("Connected to WhatsApp")
 		c.sendWebhookEvent("connected", map[string]interface{}{
 			"session_id": c.sessionID,
-			"timestamp": time.Now().Unix(),
+			"timestamp":  time.Now().Unix(),
 		})
 	case *events.Disconnected:
 		c.mu.Lock()
@@ -108,7 +119,7 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		c.logger.Info().Msg("Disconnected from WhatsApp")
 		c.sendWebhookEvent("disconnected", map[string]interface{}{
 			"session_id": c.sessionID,
-			"timestamp": time.Now().Unix(),
+			"timestamp":  time.Now().Unix(),
 		})
 	case *events.Message:
 		c.mu.Lock()
@@ -133,10 +144,24 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"timestamp":  time.Now().Unix(),
 		})
 	case *events.PairSuccess:
-		c.logger.Info().Msg("Paired successfully")
+		jid := v.ID.String()
+		c.logger.Info().Str("jid", jid).Str("business_name", v.BusinessName).Str("platform", v.Platform).Msg("QR Pair Success")
+
+
+		c.mu.RLock()
+		callback := c.onPairSuccess
+		c.mu.RUnlock()
+
+		if callback != nil {
+			callback(c.sessionID, jid)
+		}
+
 		c.sendWebhookEvent("pair_success", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
+			"session_id":    c.sessionID,
+			"jid":           jid,
+			"business_name": v.BusinessName,
+			"platform":      v.Platform,
+			"timestamp":     time.Now().Unix(),
 		})
 	case *events.StreamError:
 		c.logger.Error().Str("code", v.Code).Msg("Stream error")
@@ -159,7 +184,7 @@ func (c *MyClient) handleEvent(evt interface{}) {
 	}
 }
 
-// Connect conecta o cliente ao WhatsApp
+
 func (c *MyClient) Connect() error {
 	c.logger.Info().Msg("Connecting to WhatsApp")
 
@@ -170,7 +195,7 @@ func (c *MyClient) Connect() error {
 	return c.client.Connect()
 }
 
-// Disconnect desconecta o cliente do WhatsApp
+
 func (c *MyClient) Disconnect() {
 	c.logger.Info().Msg("Disconnecting from WhatsApp")
 	c.client.Disconnect()
@@ -180,19 +205,19 @@ func (c *MyClient) Disconnect() {
 	c.mu.Unlock()
 }
 
-// IsConnected verifica se o cliente está conectado
+
 func (c *MyClient) IsConnected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.isConnected && c.client.IsConnected()
 }
 
-// IsLoggedIn verifica se o cliente está logado
+
 func (c *MyClient) IsLoggedIn() bool {
 	return c.client.IsLoggedIn()
 }
 
-// GetJID retorna o JID do cliente
+
 func (c *MyClient) GetJID() types.JID {
 	if c.client.Store.ID == nil {
 		return types.EmptyJID
@@ -200,12 +225,12 @@ func (c *MyClient) GetJID() types.JID {
 	return *c.client.Store.ID
 }
 
-// GetPushName retorna o push name do cliente
+
 func (c *MyClient) GetPushName() string {
 	return c.client.Store.PushName
 }
 
-// GetStatistics retorna estatísticas do cliente
+
 func (c *MyClient) GetStatistics() *models.SessionStatistics {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -218,17 +243,17 @@ func (c *MyClient) GetStatistics() *models.SessionStatistics {
 	}
 }
 
-// RemoveEventHandler remove um event handler
+
 func (c *MyClient) RemoveEventHandler(id uint32) {
 	c.client.RemoveEventHandler(id)
 }
 
-// GetClient retorna o cliente whatsmeow subjacente
+
 func (c *MyClient) GetClient() *whatsmeow.Client {
 	return c.client
 }
 
-// sendWebhookEvent envia um evento para o canal de webhook
+
 func (c *MyClient) sendWebhookEvent(event string, data interface{}) {
 	if c.webhookChan == nil {
 		return
@@ -249,7 +274,7 @@ func (c *MyClient) sendWebhookEvent(event string, data interface{}) {
 	}
 }
 
-// PairPhone inicia o processo de pareamento por telefone
+
 func (c *MyClient) PairPhone(phoneNumber string) error {
 	c.logger.Info().Str("phone", phoneNumber).Msg("Starting phone pairing")
 
@@ -257,12 +282,12 @@ func (c *MyClient) PairPhone(phoneNumber string) error {
 		return fmt.Errorf("client is already logged in")
 	}
 
-	// Implementar lógica de pareamento por telefone
-	// Isso depende da versão específica do whatsmeow
+
+
 	return fmt.Errorf("phone pairing not implemented yet")
 }
 
-// Logout faz logout do cliente
+
 func (c *MyClient) Logout() error {
 	c.logger.Info().Msg("Logging out from WhatsApp")
 
@@ -270,7 +295,7 @@ func (c *MyClient) Logout() error {
 		return fmt.Errorf("client is not logged in")
 	}
 
-	err := c.client.Logout()
+	err := c.client.Logout(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to logout: %w", err)
 	}

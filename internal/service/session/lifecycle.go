@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// LifecycleEvent representa um evento do ciclo de vida de uma sessão
+
 type LifecycleEvent struct {
 	SessionID string
 	Event     LifecycleEventType
@@ -18,7 +18,7 @@ type LifecycleEvent struct {
 	Timestamp time.Time
 }
 
-// LifecycleEventType representa o tipo de evento do ciclo de vida
+
 type LifecycleEventType string
 
 const (
@@ -31,7 +31,7 @@ const (
 	EventSessionCleanup      LifecycleEventType = "session_cleanup"
 )
 
-// LifecycleManager gerencia o ciclo de vida das sessões
+
 type LifecycleManager struct {
 	mu            sync.RWMutex
 	eventChan     chan LifecycleEvent
@@ -43,10 +43,10 @@ type LifecycleManager struct {
 	cancel        context.CancelFunc
 }
 
-// LifecycleHandler é uma função que processa eventos do ciclo de vida
+
 type LifecycleHandler func(event LifecycleEvent) error
 
-// SessionState representa o estado atual de uma sessão
+
 type SessionState struct {
 	SessionID    string
 	Status       models.SessionStatus
@@ -56,7 +56,7 @@ type SessionState struct {
 	Metadata     map[string]interface{}
 }
 
-// NewLifecycleManager cria um novo gerenciador de ciclo de vida
+
 func NewLifecycleManager() *LifecycleManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -71,21 +71,21 @@ func NewLifecycleManager() *LifecycleManager {
 	}
 }
 
-// Start inicia o gerenciador de ciclo de vida
+
 func (lm *LifecycleManager) Start() error {
 	lm.logger.Info().Msg("Starting lifecycle manager")
 
-	// Iniciar processamento de eventos
+
 	go lm.processEvents()
 
-	// Iniciar limpeza periódica
+
 	go lm.periodicCleanup()
 
 	lm.logger.Info().Msg("Lifecycle manager started")
 	return nil
 }
 
-// Stop para o gerenciador de ciclo de vida
+
 func (lm *LifecycleManager) Stop() {
 	lm.logger.Info().Msg("Stopping lifecycle manager")
 
@@ -96,7 +96,7 @@ func (lm *LifecycleManager) Stop() {
 	lm.logger.Info().Msg("Lifecycle manager stopped")
 }
 
-// EmitEvent emite um evento do ciclo de vida
+
 func (lm *LifecycleManager) EmitEvent(sessionID string, eventType LifecycleEventType, data interface{}) {
 	event := LifecycleEvent{
 		SessionID: sessionID,
@@ -113,7 +113,7 @@ func (lm *LifecycleManager) EmitEvent(sessionID string, eventType LifecycleEvent
 	}
 }
 
-// RegisterHandler registra um handler para um tipo de evento
+
 func (lm *LifecycleManager) RegisterHandler(eventType LifecycleEventType, handler LifecycleHandler) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -126,7 +126,7 @@ func (lm *LifecycleManager) RegisterHandler(eventType LifecycleEventType, handle
 	lm.logger.Debug().Str("event_type", string(eventType)).Msg("Handler registered")
 }
 
-// GetSessionState retorna o estado atual de uma sessão
+
 func (lm *LifecycleManager) GetSessionState(sessionID string) (*SessionState, bool) {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
@@ -135,7 +135,7 @@ func (lm *LifecycleManager) GetSessionState(sessionID string) (*SessionState, bo
 	return state, exists
 }
 
-// UpdateSessionState atualiza o estado de uma sessão
+
 func (lm *LifecycleManager) UpdateSessionState(sessionID string, status models.SessionStatus) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -156,7 +156,7 @@ func (lm *LifecycleManager) UpdateSessionState(sessionID string, status models.S
 	lm.logger.Debug().Str("session_id", sessionID).Str("status", string(status)).Msg("Session state updated")
 }
 
-// RemoveSessionState remove o estado de uma sessão
+
 func (lm *LifecycleManager) RemoveSessionState(sessionID string) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -165,7 +165,7 @@ func (lm *LifecycleManager) RemoveSessionState(sessionID string) {
 	lm.logger.Debug().Str("session_id", sessionID).Msg("Session state removed")
 }
 
-// processEvents processa eventos do ciclo de vida
+
 func (lm *LifecycleManager) processEvents() {
 	lm.logger.Info().Msg("Starting event processor")
 
@@ -186,17 +186,17 @@ func (lm *LifecycleManager) processEvents() {
 	}
 }
 
-// handleEvent processa um evento específico
+
 func (lm *LifecycleManager) handleEvent(event LifecycleEvent) {
 	lm.logger.Debug().
 		Str("session_id", event.SessionID).
 		Str("event", string(event.Event)).
 		Msg("Processing lifecycle event")
 
-	// Atualizar estado da sessão baseado no evento
+
 	lm.updateStateFromEvent(event)
 
-	// Executar handlers registrados
+
 	lm.mu.RLock()
 	handlers := lm.handlers[event.Event]
 	lm.mu.RUnlock()
@@ -212,7 +212,7 @@ func (lm *LifecycleManager) handleEvent(event LifecycleEvent) {
 	}
 }
 
-// updateStateFromEvent atualiza o estado da sessão baseado no evento
+
 func (lm *LifecycleManager) updateStateFromEvent(event LifecycleEvent) {
 	switch event.Event {
 	case EventSessionCreated:
@@ -236,7 +236,7 @@ func (lm *LifecycleManager) updateStateFromEvent(event LifecycleEvent) {
 	}
 }
 
-// incrementErrorCount incrementa o contador de erros de uma sessão
+
 func (lm *LifecycleManager) incrementErrorCount(sessionID string) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -246,7 +246,7 @@ func (lm *LifecycleManager) incrementErrorCount(sessionID string) {
 	}
 }
 
-// periodicCleanup executa limpeza periódica
+
 func (lm *LifecycleManager) periodicCleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -265,7 +265,7 @@ func (lm *LifecycleManager) periodicCleanup() {
 	}
 }
 
-// cleanup executa limpeza de estados antigos
+
 func (lm *LifecycleManager) cleanup() {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -291,7 +291,7 @@ func (lm *LifecycleManager) cleanup() {
 	}
 }
 
-// GetStats retorna estatísticas do lifecycle manager
+
 func (lm *LifecycleManager) GetStats() LifecycleStats {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
@@ -320,7 +320,7 @@ func (lm *LifecycleManager) GetStats() LifecycleStats {
 	return stats
 }
 
-// LifecycleStats representa estatísticas do lifecycle manager
+
 type LifecycleStats struct {
 	TotalSessions        int `json:"total_sessions"`
 	ConnectedSessions    int `json:"connected_sessions"`

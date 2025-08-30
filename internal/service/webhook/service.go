@@ -15,7 +15,7 @@ import (
 	"github.com/felipe/zemeow/internal/service/meow"
 )
 
-// WebhookService gerencia o envio de webhooks
+
 type WebhookService struct {
 	mu         sync.RWMutex
 	client     *http.Client
@@ -28,7 +28,7 @@ type WebhookService struct {
 	workers    int
 }
 
-// WebhookPayload representa o payload de um webhook
+
 type WebhookPayload struct {
 	SessionID string                 `json:"session_id"`
 	Event     string                 `json:"event"`
@@ -39,14 +39,14 @@ type WebhookPayload struct {
 	URL       string                 `json:"-"`
 }
 
-// WebhookResponse representa a resposta de um webhook
+
 type WebhookResponse struct {
 	Success   bool   `json:"success"`
 	Message   string `json:"message,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// WebhookStats representa estatísticas de webhooks
+
 type WebhookStats struct {
 	TotalSent     int64 `json:"total_sent"`
 	TotalSuccess  int64 `json:"total_success"`
@@ -56,7 +56,7 @@ type WebhookStats struct {
 	ActiveWorkers int   `json:"active_workers"`
 }
 
-// NewWebhookService cria uma nova instância do serviço de webhook
+
 func NewWebhookService(repository repositories.SessionRepository, config *config.Config) *WebhookService {
 	ctx, cancel := context.WithCancel(context.Background())
 	
@@ -79,11 +79,11 @@ func NewWebhookService(repository repositories.SessionRepository, config *config
 	}
 }
 
-// Start inicia o serviço de webhook
+
 func (s *WebhookService) Start() {
 	s.logger.Info().Int("workers", s.workers).Msg("Starting webhook service")
 	
-	// Iniciar workers
+
 	for i := 0; i < s.workers; i++ {
 		go s.worker(i)
 	}
@@ -91,7 +91,7 @@ func (s *WebhookService) Start() {
 	s.logger.Info().Msg("Webhook service started")
 }
 
-// Stop para o serviço de webhook
+
 func (s *WebhookService) Stop() {
 	s.logger.Info().Msg("Stopping webhook service")
 	
@@ -101,7 +101,7 @@ func (s *WebhookService) Stop() {
 	s.logger.Info().Msg("Webhook service stopped")
 }
 
-// ProcessEvents processa eventos do WhatsAppManager
+
 func (s *WebhookService) ProcessEvents(eventChan <-chan meow.WebhookEvent) {
 	s.logger.Info().Msg("Starting event processor")
 	
@@ -114,7 +114,7 @@ func (s *WebhookService) ProcessEvents(eventChan <-chan meow.WebhookEvent) {
 					return
 				}
 				
-				// Processar evento
+
 				if err := s.processEvent(event); err != nil {
 					s.logger.Error().Err(err).Str("session_id", event.SessionID).Str("event", event.Event).Msg("Failed to process event")
 				}
@@ -127,7 +127,7 @@ func (s *WebhookService) ProcessEvents(eventChan <-chan meow.WebhookEvent) {
 	}()
 }
 
-// SendWebhook envia um webhook diretamente
+
 func (s *WebhookService) SendWebhook(payload WebhookPayload) error {
 	select {
 	case s.queue <- payload:
@@ -137,39 +137,39 @@ func (s *WebhookService) SendWebhook(payload WebhookPayload) error {
 	}
 }
 
-// GetStats retorna estatísticas do serviço
+
 func (s *WebhookService) GetStats() WebhookStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	
 	return WebhookStats{
-		// TODO: Implementar contadores reais
+
 		QueueSize:     len(s.queue),
 		ActiveWorkers: s.workers,
 	}
 }
 
-// processEvent processa um evento do WhatsApp e envia webhook se configurado
+
 func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
-	// Buscar sessão para obter configuração de webhook
-	session, err := s.repository.GetBySessionID(event.SessionID)
+
+	session, err := s.repository.GetByIdentifier(event.SessionID)
 	if err != nil {
 		return fmt.Errorf("failed to get session: %w", err)
 	}
 	
-	// Verificar se webhook está configurado
+
 	if session.WebhookURL == nil || *session.WebhookURL == "" {
 		s.logger.Debug().Str("session_id", event.SessionID).Msg("No webhook URL configured")
 		return nil
 	}
 	
-	// Verificar se o evento está na lista de eventos configurados
+
 	if !s.isEventEnabled(event.Event, session.WebhookEvents) {
 		s.logger.Debug().Str("session_id", event.SessionID).Str("event", event.Event).Msg("Event not enabled for webhook")
 		return nil
 	}
 	
-	// Criar payload
+
 	payload := WebhookPayload{
 		SessionID: event.SessionID,
 		Event:     event.Event,
@@ -182,11 +182,11 @@ func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
 		},
 	}
 	
-	// Enviar para fila
+
 	return s.SendWebhook(payload)
 }
 
-// worker processa webhooks da fila
+
 func (s *WebhookService) worker(id int) {
 	s.logger.Debug().Int("worker_id", id).Msg("Starting webhook worker")
 	
@@ -198,19 +198,19 @@ func (s *WebhookService) worker(id int) {
 				return
 			}
 			
-			// Processar webhook
+
 			if err := s.sendHTTPWebhook(payload); err != nil {
 				s.logger.Error().Err(err).Int("worker_id", id).Str("session_id", payload.SessionID).Msg("Failed to send webhook")
 				
-				// Retry se não excedeu o limite
+
 				if payload.Retries < s.config.Webhook.RetryCount {
 					payload.Retries++
 					
-					// Delay exponencial
+
 					delay := time.Duration(payload.Retries*payload.Retries) * time.Second
 					time.Sleep(delay)
 					
-					// Reenviar
+
 					select {
 					case s.queue <- payload:
 					default:
@@ -226,27 +226,27 @@ func (s *WebhookService) worker(id int) {
 	}
 }
 
-// sendHTTPWebhook envia o webhook via HTTP
+
 func (s *WebhookService) sendHTTPWebhook(payload WebhookPayload) error {
-	// Serializar payload
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 	
-	// Criar request
+
 	req, err := http.NewRequestWithContext(s.ctx, "POST", payload.URL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	
-	// Headers
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "ZeMeow-Webhook/1.0")
 	req.Header.Set("X-Webhook-Event", payload.Event)
 	req.Header.Set("X-Session-ID", payload.SessionID)
 	
-	// Enviar request
+
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -256,7 +256,7 @@ func (s *WebhookService) sendHTTPWebhook(payload WebhookPayload) error {
 	
 	duration := time.Since(start)
 	
-	// Verificar status code
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
 	}
@@ -273,10 +273,10 @@ func (s *WebhookService) sendHTTPWebhook(payload WebhookPayload) error {
 	return nil
 }
 
-// isEventEnabled verifica se um evento está habilitado para webhook
+
 func (s *WebhookService) isEventEnabled(event string, enabledEvents []string) bool {
 	if len(enabledEvents) == 0 {
-		// Se não especificado, todos os eventos são habilitados
+
 		return true
 	}
 	
@@ -289,7 +289,7 @@ func (s *WebhookService) isEventEnabled(event string, enabledEvents []string) bo
 	return false
 }
 
-// TestWebhook testa o envio de webhook para uma URL
+
 func (s *WebhookService) TestWebhook(url string, sessionID string) error {
 	testPayload := WebhookPayload{
 		SessionID: sessionID,

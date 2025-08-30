@@ -39,7 +39,7 @@ func (v Values) Get(key string) string {
 	return v.m[key]
 }
 
-// messageTypes moved to constants.go as supportedEventTypes
+
 
 func (s *server) authadmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func (s *server) authalice(next http.Handler) http.Handler {
 		proxy_url := ""
 		qrcode := ""
 
-		// Get token from headers or uri parameters
+
 		token := r.Header.Get("token")
 		if token == "" {
 			token = strings.Join(r.URL.Query()["token"], "")
@@ -73,7 +73,7 @@ func (s *server) authalice(next http.Handler) http.Handler {
 		myuserinfo, found := userinfocache.Get(token)
 		if !found {
 			log.Info().Msg("Looking for user information in DB")
-			// Checks DB from matching user and store user values in context
+
 			rows, err := s.db.Query("SELECT id,name,webhook,jid,events,proxy_url,qrcode FROM users WHERE token=$1 LIMIT 1", token)
 			if err != nil {
 				s.Respond(w, r, http.StatusInternalServerError, err)
@@ -115,7 +115,7 @@ func (s *server) authalice(next http.Handler) http.Handler {
 	})
 }
 
-// Connects to Whatsapp Servers
+
 func (s *server) Connect() http.HandlerFunc {
 
 	type connectStruct struct {
@@ -131,7 +131,7 @@ func (s *server) Connect() http.HandlerFunc {
 		token := r.Context().Value("userinfo").(Values).Get("Token")
 		eventstring := ""
 
-		// Decodes request BODY looking for events to subscribe
+
 		decoder := json.NewDecoder(r.Body)
 		var t connectStruct
 		err := decoder.Decode(&t)
@@ -202,7 +202,7 @@ func (s *server) Connect() http.HandlerFunc {
 	}
 }
 
-// Disconnects from Whatsapp websocket, does not log out device
+
 func (s *server) Disconnect() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -215,7 +215,7 @@ func (s *server) Disconnect() http.HandlerFunc {
 			return
 		}
 		if clientManager.GetWhatsmeowClient(txtid).IsConnected() == true {
-			//if clientManager.GetWhatsmeowClient(txtid).IsLoggedIn() == true {
+
 			log.Info().Str("jid", jid).Msg("Disconnection successfull")
 			_, err := s.db.Exec("UPDATE users SET connected=0,events=$1 WHERE id=$2", "", txtid)
 			if err != nil {
@@ -237,11 +237,11 @@ func (s *server) Disconnect() http.HandlerFunc {
 				s.Respond(w, r, http.StatusOK, string(responseJson))
 			}
 			return
-			//} else {
-			//	log.Warn().Str("jid", jid).Msg("Ignoring disconnect as it was not connected")
-			//	s.Respond(w, r, http.StatusInternalServerError, errors.New("Cannot disconnect because it is not logged in"))
-			//	return
-			//}
+
+
+
+
+
 		} else {
 			log.Warn().Str("jid", jid).Msg("Ignoring disconnect as it was not connected")
 			s.Respond(w, r, http.StatusInternalServerError, errors.New("cannot disconnect because it is not logged in"))
@@ -250,7 +250,7 @@ func (s *server) Disconnect() http.HandlerFunc {
 	}
 }
 
-// Gets WebHook
+
 func (s *server) GetWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -290,20 +290,20 @@ func (s *server) GetWebhook() http.HandlerFunc {
 	}
 }
 
-// DeleteWebhook removes the webhook and clears events for a user
+
 func (s *server) DeleteWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 		token := r.Context().Value("userinfo").(Values).Get("Token")
 
-		// Update the database to remove the webhook and clear events
+
 		_, err := s.db.Exec("UPDATE users SET webhook='', events='' WHERE id=$1", txtid)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not delete webhook: %v", err)))
 			return
 		}
 
-		// Update the user info cache
+
 		v := updateUserInfo(r.Context().Value("userinfo"), "Webhook", "")
 		v = updateUserInfo(v, "Events", "")
 		userinfocache.Set(token, v, cache.NoExpiration)
@@ -318,7 +318,7 @@ func (s *server) DeleteWebhook() http.HandlerFunc {
 	}
 }
 
-// UpdateWebhook updates the webhook URL and events for a user
+
 func (s *server) UpdateWebhook() http.HandlerFunc {
 	type updateWebhookStruct struct {
 		WebhookURL string   `json:"webhook"`
@@ -361,13 +361,13 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 		if len(t.Events) > 0 {
 			_, err = s.db.Exec("UPDATE users SET webhook=$1, events=$2 WHERE id=$3", webhook, eventstring, txtid)
 
-			// Update MyClient if connected - integrated UpdateEvents functionality
+
 			if len(validEvents) > 0 {
 				clientManager.UpdateMyClientSubscriptions(txtid, validEvents)
 				log.Info().Strs("events", validEvents).Str("user", txtid).Msg("Updated event subscriptions")
 			}
 		} else {
-			// Update only webhook
+
 			_, err = s.db.Exec("UPDATE users SET webhook=$1 WHERE id=$2", webhook, txtid)
 		}
 
@@ -390,7 +390,7 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 	}
 }
 
-// SetWebhook sets the webhook URL and events for a user
+
 func (s *server) SetWebhook() http.HandlerFunc {
 	type webhookStruct struct {
 		WebhookURL string   `json:"webhookurl"`
@@ -410,7 +410,7 @@ func (s *server) SetWebhook() http.HandlerFunc {
 
 		webhook := t.WebhookURL
 
-		// If events are provided, validate them
+
 		var eventstring string
 		if len(t.Events) > 0 {
 			var validEvents []string
@@ -426,16 +426,16 @@ func (s *server) SetWebhook() http.HandlerFunc {
 				eventstring = ""
 			}
 
-			// Update both webhook and events
+
 			_, err = s.db.Exec("UPDATE users SET webhook=$1, events=$2 WHERE id=$3", webhook, eventstring, txtid)
 
-			// Update MyClient if connected - integrated UpdateEvents functionality
+
 			if len(validEvents) > 0 {
 				clientManager.UpdateMyClientSubscriptions(txtid, validEvents)
 				log.Info().Strs("events", validEvents).Str("user", txtid).Msg("Updated event subscriptions")
 			}
 		} else {
-			// Update only webhook
+
 			_, err = s.db.Exec("UPDATE users SET webhook=$1 WHERE id=$2", webhook, txtid)
 		}
 
@@ -458,7 +458,7 @@ func (s *server) SetWebhook() http.HandlerFunc {
 	}
 }
 
-// Gets QR code encoded in Base64
+
 func (s *server) GetQR() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -509,7 +509,7 @@ func (s *server) GetQR() http.HandlerFunc {
 	}
 }
 
-// Logs out device from Whatsapp (requires to scan QR next time)
+
 func (s *server) Logout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -556,7 +556,7 @@ func (s *server) Logout() http.HandlerFunc {
 	}
 }
 
-// Pair by Phone. Retrieves the code to pair by phone number instead of QR
+
 func (s *server) PairPhone() http.HandlerFunc {
 
 	type pairStruct struct {
@@ -610,14 +610,14 @@ func (s *server) PairPhone() http.HandlerFunc {
 	}
 }
 
-// Gets Connected and LoggedIn Status
+
 func (s *server) GetStatus() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		userInfo := r.Context().Value("userinfo").(Values)
 
-		// Log all userinfo values
+
 		log.Info().
 			Str("Id", userInfo.Get("Id")).
 			Str("Jid", userInfo.Get("Jid")).
@@ -642,14 +642,14 @@ func (s *server) GetStatus() http.HandlerFunc {
 		isConnected := clientManager.GetWhatsmeowClient(txtid).IsConnected()
 		isLoggedIn := clientManager.GetWhatsmeowClient(txtid).IsLoggedIn()
 
-		// Get proxy_config
+
 		var proxyURL string
 		s.db.QueryRow("SELECT proxy_url FROM users WHERE id = $1", txtid).Scan(&proxyURL)
 		proxyConfig := map[string]interface{}{
 			"enabled":   proxyURL != "",
 			"proxy_url": proxyURL,
 		}
-		// Get s3_config
+
 		var s3Enabled bool
 		var s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3PublicURL, s3MediaDelivery string
 		var s3PathStyle bool
@@ -690,7 +690,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 	}
 }
 
-// Sends a document/attachment message
+
 func (s *server) SendDocument() http.HandlerFunc {
 
 	type documentStruct struct {
@@ -821,7 +821,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 	}
 }
 
-// Sends an audio message
+
 func (s *server) SendAudio() http.HandlerFunc {
 
 	type audioStruct struct {
@@ -902,7 +902,7 @@ func (s *server) SendAudio() http.HandlerFunc {
 			URL:        proto.String(uploaded.URL),
 			DirectPath: proto.String(uploaded.DirectPath),
 			MediaKey:   uploaded.MediaKey,
-			//Mimetype:      proto.String(http.DetectContentType(filedata)),
+
 			Mimetype:      &mime,
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
@@ -942,7 +942,7 @@ func (s *server) SendAudio() http.HandlerFunc {
 	}
 }
 
-// Sends an Image message
+
 func (s *server) SendImage() http.HandlerFunc {
 
 	type imageStruct struct {
@@ -1014,7 +1014,7 @@ func (s *server) SendImage() http.HandlerFunc {
 				}
 			}
 
-			// decode jpeg into image.Image
+
 			reader := bytes.NewReader(filedata)
 			img, _, err := image.Decode(reader)
 			if err != nil {
@@ -1022,7 +1022,7 @@ func (s *server) SendImage() http.HandlerFunc {
 				return
 			}
 
-			// resize to width 72 using Lanczos resampling and preserve aspect ratio
+
 			m := resize.Thumbnail(72, 72, img, resize.Lanczos3)
 
 			tmpFile, err := os.CreateTemp("", "resized-*.jpg")
@@ -1032,7 +1032,7 @@ func (s *server) SendImage() http.HandlerFunc {
 			}
 			defer tmpFile.Close()
 
-			// write new image to file
+
 			if err := jpeg.Encode(tmpFile, m, nil); err != nil {
 				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to encode jpeg: %v", err)))
 				return
@@ -1098,7 +1098,7 @@ func (s *server) SendImage() http.HandlerFunc {
 	}
 }
 
-// Sends Sticker message
+
 func (s *server) SendSticker() http.HandlerFunc {
 
 	type stickerStruct struct {
@@ -1221,7 +1221,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 	}
 }
 
-// Sends Video message
+
 func (s *server) SendVideo() http.HandlerFunc {
 
 	type imageStruct struct {
@@ -1346,7 +1346,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 	}
 }
 
-// Sends Contact
+
 func (s *server) SendContact() http.HandlerFunc {
 
 	type contactStruct struct {
@@ -1439,7 +1439,7 @@ func (s *server) SendContact() http.HandlerFunc {
 	}
 }
 
-// Sends location
+
 func (s *server) SendLocation() http.HandlerFunc {
 
 	type locationStruct struct {
@@ -1534,7 +1534,7 @@ func (s *server) SendLocation() http.HandlerFunc {
 	}
 }
 
-// Sends Buttons (not implemented, does not work)
+
 func (s *server) SendButtons() http.HandlerFunc {
 
 	type buttonStruct struct {
@@ -1638,7 +1638,7 @@ func (s *server) SendButtons() http.HandlerFunc {
 	}
 }
 
-// SendList
+
 func (s *server) SendList() http.HandlerFunc {
 	type listItem struct {
 		Title string `json:"title"`
@@ -1673,13 +1673,13 @@ func (s *server) SendList() http.HandlerFunc {
 			return
 		}
 
-		// Required fields validation - FooterText is optional
+
 		if req.Phone == "" || req.ButtonText == "" || req.Desc == "" || req.TopText == "" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing required fields: Phone, ButtonText, Desc, TopText"))
 			return
 		}
 
-		// Priority for Sections, but accepts List for compatibility
+
 		var sections []*waE2E.ListMessage_Section
 		if len(req.Sections) > 0 {
 			for _, sec := range req.Sections {
@@ -1714,7 +1714,7 @@ func (s *server) SendList() http.HandlerFunc {
 				})
 			}
 
-			// Debug: dynamic title: uses TopText if it exists, otherwise 'Menu'
+
 			sectionTitle := req.TopText
 			if sectionTitle == "" {
 				sectionTitle = "Menu"
@@ -1739,7 +1739,7 @@ func (s *server) SendList() http.HandlerFunc {
 			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		}
 
-		// Create the message with ListMessage
+
 		listMsg := &waE2E.ListMessage{
 			Title:       proto.String(req.TopText),
 			Description: proto.String(req.Desc),
@@ -1748,12 +1748,12 @@ func (s *server) SendList() http.HandlerFunc {
 			Sections:    sections,
 		}
 
-		// Add footer only if provided
+
 		if req.FooterText != "" {
 			listMsg.FooterText = proto.String(req.FooterText)
 		}
 
-		// Try with ViewOnceMessage wrapper as some users report this helps with error 405
+
 		msg := &waE2E.Message{
 			ViewOnceMessage: &waE2E.FutureProofMessage{
 				Message: &waE2E.Message{
@@ -1787,7 +1787,7 @@ func (s *server) SendList() http.HandlerFunc {
 	}
 }
 
-// Sends a regular text message
+
 func (s *server) SendMessage() http.HandlerFunc {
 
 	type textStruct struct {
@@ -1952,7 +1952,7 @@ func (s *server) SendPoll() http.HandlerFunc {
 	}
 }
 
-// Delete message
+
 func (s *server) DeleteMessage() http.HandlerFunc {
 
 	type textStruct struct {
@@ -2017,7 +2017,7 @@ func (s *server) DeleteMessage() http.HandlerFunc {
 	}
 }
 
-// Sends a edit text message
+
 func (s *server) SendEditMessage() http.HandlerFunc {
 
 	type editStruct struct {
@@ -2111,7 +2111,7 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 }
 
 /*
-// Sends a Template message
+
 func (s *server) SendTemplate() http.HandlerFunc {
 
 	type buttonStruct struct {
@@ -2142,7 +2142,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 
 		msgid := ""
 		var resp whatsmeow.SendResponse
-//var ts time.Time
+
 
 		decoder := json.NewDecoder(r.Body)
 		var t templateStruct
@@ -2270,7 +2270,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 }
 */
 
-// checks if users/phones are on Whatsapp
+
 func (s *server) CheckUser() http.HandlerFunc {
 
 	type checkUserStruct struct {
@@ -2336,7 +2336,7 @@ func (s *server) CheckUser() http.HandlerFunc {
 	}
 }
 
-// Gets user information
+
 func (s *server) GetUser() http.HandlerFunc {
 
 	type checkUserStruct struct {
@@ -2403,7 +2403,7 @@ func (s *server) GetUser() http.HandlerFunc {
 	}
 }
 
-// Sets global presence status
+
 func (s *server) SendPresence() http.HandlerFunc {
 
 	type PresenceRequest struct {
@@ -2459,7 +2459,7 @@ func (s *server) SendPresence() http.HandlerFunc {
 	}
 }
 
-// Gets avatar info for user
+
 func (s *server) GetAvatar() http.HandlerFunc {
 
 	type getAvatarStruct struct {
@@ -2526,7 +2526,7 @@ func (s *server) GetAvatar() http.HandlerFunc {
 	}
 }
 
-// Gets all contacts
+
 func (s *server) GetContacts() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -2556,7 +2556,7 @@ func (s *server) GetContacts() http.HandlerFunc {
 	}
 }
 
-// Sets Chat Presence (typing/paused/recording audio)
+
 func (s *server) ChatPresence() http.HandlerFunc {
 
 	type chatPresenceStruct struct {
@@ -2615,7 +2615,7 @@ func (s *server) ChatPresence() http.HandlerFunc {
 	}
 }
 
-// Downloads Image and returns base64 representation
+
 func (s *server) DownloadImage() http.HandlerFunc {
 
 	type downloadImageStruct struct {
@@ -2640,7 +2640,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 			return
 		}
 
-		// check/creates user directory for files
+
 		userDirectory := filepath.Join(s.exPath, "files", "user_"+txtid)
 		_, err := os.Stat(userDirectory)
 		if os.IsNotExist(err) {
@@ -2694,7 +2694,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 	}
 }
 
-// Downloads Document and returns base64 representation
+
 func (s *server) DownloadDocument() http.HandlerFunc {
 
 	type downloadDocumentStruct struct {
@@ -2719,7 +2719,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 			return
 		}
 
-		// check/creates user directory for files
+
 		userDirectory := filepath.Join(s.exPath, "files", "user_"+txtid)
 		_, err := os.Stat(userDirectory)
 		if os.IsNotExist(err) {
@@ -2773,7 +2773,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 	}
 }
 
-// Downloads Video and returns base64 representation
+
 func (s *server) DownloadVideo() http.HandlerFunc {
 
 	type downloadVideoStruct struct {
@@ -2798,7 +2798,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 			return
 		}
 
-		// check/creates user directory for files
+
 		userDirectory := filepath.Join(s.exPath, "files", "user_"+txtid)
 		_, err := os.Stat(userDirectory)
 		if os.IsNotExist(err) {
@@ -2852,7 +2852,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 	}
 }
 
-// Downloads Audio and returns base64 representation
+
 func (s *server) DownloadAudio() http.HandlerFunc {
 
 	type downloadAudioStruct struct {
@@ -2877,7 +2877,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 			return
 		}
 
-		// check/creates user directory for files
+
 		userDirectory := filepath.Join(s.exPath, "files", "user_"+txtid)
 		_, err := os.Stat(userDirectory)
 		if os.IsNotExist(err) {
@@ -2931,7 +2931,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 	}
 }
 
-// React
+
 func (s *server) React() http.HandlerFunc {
 
 	type textStruct struct {
@@ -3026,7 +3026,7 @@ func (s *server) React() http.HandlerFunc {
 	}
 }
 
-// Mark messages as read
+
 func (s *server) MarkRead() http.HandlerFunc {
 
 	type markReadStruct struct {
@@ -3079,7 +3079,7 @@ func (s *server) MarkRead() http.HandlerFunc {
 	}
 }
 
-// List groups
+
 func (s *server) ListGroups() http.HandlerFunc {
 
 	type GroupCollection struct {
@@ -3120,7 +3120,7 @@ func (s *server) ListGroups() http.HandlerFunc {
 	}
 }
 
-// Get group info
+
 func (s *server) GetGroupInfo() http.HandlerFunc {
 
 	type getGroupInfoStruct struct {
@@ -3136,7 +3136,7 @@ func (s *server) GetGroupInfo() http.HandlerFunc {
 			return
 		}
 
-		// Get GroupJID from query parameter
+
 		groupJID := r.URL.Query().Get("groupJID")
 		if groupJID == "" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing groupJID parameter"))
@@ -3170,7 +3170,7 @@ func (s *server) GetGroupInfo() http.HandlerFunc {
 	}
 }
 
-// Get group invite link
+
 func (s *server) GetGroupInviteLink() http.HandlerFunc {
 
 	type getGroupInfoStruct struct {
@@ -3187,14 +3187,14 @@ func (s *server) GetGroupInviteLink() http.HandlerFunc {
 			return
 		}
 
-		// Get GroupJID from query parameter
+
 		groupJID := r.URL.Query().Get("groupJID")
 		if groupJID == "" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing groupJID parameter"))
 			return
 		}
 
-		// Get reset parameter
+
 		resetParam := r.URL.Query().Get("reset")
 		reset := false
 		if resetParam != "" {
@@ -3234,7 +3234,7 @@ func (s *server) GetGroupInviteLink() http.HandlerFunc {
 	}
 }
 
-// Join group invite link
+
 func (s *server) GroupJoin() http.HandlerFunc {
 
 	type joinGroupStruct struct {
@@ -3285,7 +3285,7 @@ func (s *server) GroupJoin() http.HandlerFunc {
 	}
 }
 
-// Create group
+
 func (s *server) CreateGroup() http.HandlerFunc {
 
 	type createGroupStruct struct {
@@ -3320,7 +3320,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 			return
 		}
 
-		// Parse participant phone numbers
+
 		participantJIDs := make([]types.JID, len(t.Participants))
 		var ok bool
 		for i, phone := range t.Participants {
@@ -3357,7 +3357,7 @@ func (s *server) CreateGroup() http.HandlerFunc {
 	}
 }
 
-// Set group locked
+
 func (s *server) SetGroupLocked() http.HandlerFunc {
 
 	type setGroupLockedStruct struct {
@@ -3410,7 +3410,7 @@ func (s *server) SetGroupLocked() http.HandlerFunc {
 	}
 }
 
-// Set disappearing timer (ephemeral messages)
+
 func (s *server) SetDisappearingTimer() http.HandlerFunc {
 
 	type setDisappearingTimerStruct struct {
@@ -3483,7 +3483,7 @@ func (s *server) SetDisappearingTimer() http.HandlerFunc {
 	}
 }
 
-// Remove group photo
+
 func (s *server) RemoveGroupPhoto() http.HandlerFunc {
 
 	type removeGroupPhotoStruct struct {
@@ -3535,13 +3535,13 @@ func (s *server) RemoveGroupPhoto() http.HandlerFunc {
 	}
 }
 
-// add, remove, promote and demote members group
+
 func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 
 	type updateGroupParticipantsStruct struct {
 		GroupJID string
 		Phone    []string
-		// Action string // add, remove, promote, demote
+
 		Action string
 	}
 
@@ -3572,7 +3572,7 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
-		// parse phone numbers
+
 		phoneParsed := make([]types.JID, len(t.Phone))
 		for i, phone := range t.Phone {
 			phoneParsed[i], ok = parseJID(phone)
@@ -3587,7 +3587,7 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 			return
 		}
 
-		// parse action
+
 
 		var action whatsmeow.ParticipantChange
 		switch t.Action {
@@ -3626,7 +3626,7 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 	}
 }
 
-// Get group invite info
+
 func (s *server) GetGroupInviteInfo() http.HandlerFunc {
 
 	type getGroupInviteInfoStruct struct {
@@ -3676,7 +3676,7 @@ func (s *server) GetGroupInviteInfo() http.HandlerFunc {
 	}
 }
 
-// Set group photo
+
 func (s *server) SetGroupPhoto() http.HandlerFunc {
 
 	type setGroupPhotoStruct struct {
@@ -3714,7 +3714,7 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 
 		var filedata []byte
 
-		// Check if the image data starts with a valid data URL format
+
 		if len(t.Image) > 10 && t.Image[0:10] == "data:image" {
 			var dataURL, err = dataurl.DecodeString(t.Image)
 			if err != nil {
@@ -3728,13 +3728,13 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 			return
 		}
 
-		// Validate that we have image data
+
 		if len(filedata) == 0 {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("no image data found in payload"))
 			return
 		}
 
-		// Validate JPEG format (WhatsApp requires JPEG)
+
 		if len(filedata) < 3 || filedata[0] != 0xFF || filedata[1] != 0xD8 || filedata[2] != 0xFF {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("image must be in JPEG format. WhatsApp only accepts JPEG images for group photos"))
 			return
@@ -3762,7 +3762,7 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 	}
 }
 
-// Set group name
+
 func (s *server) SetGroupName() http.HandlerFunc {
 
 	type setGroupNameStruct struct {
@@ -3820,7 +3820,7 @@ func (s *server) SetGroupName() http.HandlerFunc {
 	}
 }
 
-// Set group topic (description)
+
 func (s *server) SetGroupTopic() http.HandlerFunc {
 
 	type setGroupTopicStruct struct {
@@ -3878,7 +3878,7 @@ func (s *server) SetGroupTopic() http.HandlerFunc {
 	}
 }
 
-// Leave group
+
 func (s *server) GroupLeave() http.HandlerFunc {
 
 	type groupLeaveStruct struct {
@@ -3930,7 +3930,7 @@ func (s *server) GroupLeave() http.HandlerFunc {
 	}
 }
 
-// SetGroupAnnounce post
+
 func (s *server) SetGroupAnnounce() http.HandlerFunc {
 
 	type setGroupAnnounceStruct struct {
@@ -3983,7 +3983,7 @@ func (s *server) SetGroupAnnounce() http.HandlerFunc {
 	}
 }
 
-// List newsletters
+
 func (s *server) ListNewsletter() http.HandlerFunc {
 
 	type NewsletterCollection struct {
@@ -4025,7 +4025,7 @@ func (s *server) ListNewsletter() http.HandlerFunc {
 	}
 }
 
-// Admin List users
+
 func (s *server) ListUsers() http.HandlerFunc {
 	type usersStruct struct {
 		Id         string         `db:"id"`
@@ -4047,7 +4047,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 		var args []interface{}
 
 		/*
-			// Query the database to get the list of users
+
 			rows, err := s.db.Queryx("SELECT id, name, token, webhook, jid, qrcode, connected, expiration, events FROM users")
 			if err != nil {
 				s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
@@ -4057,11 +4057,11 @@ func (s *server) ListUsers() http.HandlerFunc {
 		*/
 
 		if hasID {
-			// Fetch a single user
+
 			query = "SELECT id, name, token, webhook, jid, qrcode, connected, expiration, proxy_url, events FROM users WHERE id = $1"
 			args = append(args, userID)
 		} else {
-			// Fetch all users
+
 			query = "SELECT id, name, token, webhook, jid, qrcode, connected, expiration, proxy_url, events FROM users"
 		}
 
@@ -4072,9 +4072,9 @@ func (s *server) ListUsers() http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		// Create a slice to store the user data
+
 		users := []map[string]interface{}{}
-		// Iterate over the rows and populate the user data
+
 		for rows.Next() {
 			var user usersStruct
 			err := rows.StructScan(&user)
@@ -4091,7 +4091,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 				isLoggedIn = clientManager.GetWhatsmeowClient(user.Id).IsLoggedIn()
 			}
 
-			//"connected":  user.Connected.Bool,
+
 			userMap := map[string]interface{}{
 				"id":         user.Id,
 				"name":       user.Name,
@@ -4105,13 +4105,13 @@ func (s *server) ListUsers() http.HandlerFunc {
 				"proxy_url":  user.ProxyURL.String,
 				"events":     user.Events,
 			}
-			// Add proxy_config
+
 			proxyURL := user.ProxyURL.String
 			userMap["proxy_config"] = map[string]interface{}{
 				"enabled":   proxyURL != "",
 				"proxy_url": proxyURL,
 			}
-			// Add s3_config (search S3 fields in the database)
+
 			var s3Enabled bool
 			var s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3PublicURL, s3MediaDelivery string
 			var s3PathStyle bool
@@ -4132,13 +4132,13 @@ func (s *server) ListUsers() http.HandlerFunc {
 			}
 			users = append(users, userMap)
 		}
-		// Check for any error that occurred during iteration
+
 		if err := rows.Err(); err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
 			return
 		}
 
-		// Encode users slice into a JSON string
+
 		responseJson, err := json.Marshal(users)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)
@@ -4150,7 +4150,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 	}
 }
 
-// Add user
+
 func (s *server) AddUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -4160,7 +4160,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			ProxyURL string `json:"proxyURL"`
 		}
 
-		// Parse the request body
+
 		var user struct {
 			Name        string       `json:"name"`
 			Token       string       `json:"token"`
@@ -4183,7 +4183,7 @@ func (s *server) AddUser() http.HandlerFunc {
 		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Valores recebidos para proxyConfig e s3Config")
 		log.Debug().Interface("user", user).Msg("Valores recebidos para user")
 
-		// Set defaults only if nil
+
 		if user.Events == "" {
 			user.Events = ""
 		}
@@ -4197,7 +4197,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			user.Webhook = ""
 		}
 
-		// Check for existing user
+
 		var count int
 		if err := s.db.Get(&count, "SELECT COUNT(*) FROM users WHERE token = $1", user.Token); err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
@@ -4216,7 +4216,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			return
 		}
 
-		// Validate events
+
 		eventList := strings.Split(user.Events, ",")
 		for _, event := range eventList {
 			event = strings.TrimSpace(event)
@@ -4234,7 +4234,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			}
 		}
 
-		// Generate ID
+
 		id, err := GenerateRandomID()
 		if err != nil {
 			log.Error().Err(err).Msg("failed to generate random ID")
@@ -4246,7 +4246,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			return
 		}
 
-		// Insert user with all proxy and S3 fields
+
 		if _, err = s.db.Exec(
 			"INSERT INTO users (id, name, token, webhook, expiration, events, jid, qrcode, proxy_url, s3_enabled, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_path_style, s3_public_url, media_delivery, s3_retention_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)",
 			id, user.Name, user.Token, user.Webhook, user.Expiration, user.Events, "", "", user.ProxyConfig.ProxyURL,
@@ -4261,7 +4261,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			return
 		}
 
-		// Initialize S3Manager if necessary
+
 		if user.S3Config != nil && user.S3Config.Enabled {
 			s3Config := &S3Config{
 				Enabled:       user.S3Config.Enabled,
@@ -4278,7 +4278,7 @@ func (s *server) AddUser() http.HandlerFunc {
 			_ = GetS3Manager().InitializeS3Client(id, s3Config)
 		}
 
-		// Build response like GET /admin/users
+
 		proxyConfig := map[string]interface{}{
 			"enabled":   user.ProxyConfig.Enabled,
 			"proxy_url": user.ProxyConfig.ProxyURL,
@@ -4312,15 +4312,15 @@ func (s *server) AddUser() http.HandlerFunc {
 	}
 }
 
-// Delete user
+
 func (s *server) DeleteUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		// Get the user ID from the request URL
+
 		vars := mux.Vars(r)
 		userID := vars["id"]
 
-		// Delete the user from the database
+
 		result, err := s.db.Exec("DELETE FROM users WHERE id=$1", userID)
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
@@ -4331,7 +4331,7 @@ func (s *server) DeleteUser() http.HandlerFunc {
 			return
 		}
 
-		// Check if the user was deleted
+
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
@@ -4359,7 +4359,7 @@ func (s *server) DeleteUser() http.HandlerFunc {
 	}
 }
 
-// Delete user complete
+
 func (s *server) DeleteUserComplete() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -4367,7 +4367,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		vars := mux.Vars(r)
 		id := vars["id"]
 
-		// Validate ID
+
 		if id == "" {
 			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 				"code":    http.StatusBadRequest,
@@ -4377,7 +4377,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			return
 		}
 
-		// Check if user exists
+
 		var exists bool
 		err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", id).Scan(&exists)
 		if err != nil {
@@ -4399,15 +4399,15 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			return
 		}
 
-		// Get user info before deletion
+
 		var uname, jid, token string
 		err = s.db.QueryRow("SELECT name, jid, token FROM users WHERE id = $1", id).Scan(&uname, &jid, &token)
 		if err != nil {
 			log.Error().Err(err).Str("id", id).Msg("problem retrieving user information")
-			// Continue anyway since we have the ID
+
 		}
 
-		// 1. Logout and disconnect instance
+
 		if client := clientManager.GetWhatsmeowClient(id); client != nil {
 			if client.IsConnected() {
 				log.Info().Str("id", id).Msg("Logging out user")
@@ -4417,7 +4417,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			client.Disconnect()
 		}
 
-		// 2. Remove from DB
+
 		_, err = s.db.Exec("DELETE FROM users WHERE id = $1", id)
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
@@ -4429,13 +4429,13 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			return
 		}
 
-		// 3. Cleanup from memory
+
 		clientManager.DeleteWhatsmeowClient(id)
 		clientManager.DeleteMyClient(id)
 		clientManager.DeleteHTTPClient(id)
 		userinfocache.Delete(token)
 
-		// 4. Remove media files
+
 		userDirectory := filepath.Join(s.exPath, "files", id)
 		if stat, err := os.Stat(userDirectory); err == nil && stat.IsDir() {
 			log.Info().Str("dir", userDirectory).Msg("deleting media and history files from disk")
@@ -4445,7 +4445,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 			}
 		}
 
-		// 5. Remove files from S3 (if enabled)
+
 		var s3Enabled bool
 		err = s.db.QueryRow("SELECT s3_enabled FROM users WHERE id = $1", id).Scan(&s3Enabled)
 		if err == nil && s3Enabled {
@@ -4461,7 +4461,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 
 		log.Info().Str("id", id).Str("name", uname).Str("jid", jid).Msg("user deleted successfully")
 
-		// Success response
+
 		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
 			"code": http.StatusOK,
 			"data": map[string]interface{}{
@@ -4475,7 +4475,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 	}
 }
 
-// Respond to client
+
 func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -4485,12 +4485,12 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 		dataenvelope["error"] = err.Error()
 		dataenvelope["success"] = false
 	} else {
-		// Try to unmarshal into a map first
+
 		var mydata map[string]interface{}
 		if err := json.Unmarshal([]byte(data.(string)), &mydata); err == nil {
 			dataenvelope["data"] = mydata
 		} else {
-			// If unmarshaling into a map fails, try as a slice
+
 			var mySlice []interface{}
 			if err := json.Unmarshal([]byte(data.(string)), &mySlice); err == nil {
 				dataenvelope["data"] = mySlice
@@ -4506,7 +4506,7 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 	}
 }
 
-// Validate message fields
+
 func validateMessageFields(phone string, stanzaid *string, participant *string) (types.JID, error) {
 
 	recipient, ok := parseJID(phone)
@@ -4529,7 +4529,7 @@ func validateMessageFields(phone string, stanzaid *string, participant *string) 
 	return recipient, nil
 }
 
-// Set proxy
+
 func (s *server) SetProxy() http.HandlerFunc {
 	type proxyStruct struct {
 		ProxyURL string `json:"proxy_url"` // Format: "socks5://user:pass@host:port" or "http://host:port"
@@ -4539,7 +4539,7 @@ func (s *server) SetProxy() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
-		// Check if client exists and is connected
+
 
 		if clientManager.GetWhatsmeowClient(txtid) != nil && clientManager.GetWhatsmeowClient(txtid).IsConnected() {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("cannot set proxy while connected. Please disconnect first"))
@@ -4554,7 +4554,7 @@ func (s *server) SetProxy() http.HandlerFunc {
 			return
 		}
 
-		// If enable is false, remove proxy configuration
+
 		if !t.Enable {
 			_, err = s.db.Exec("UPDATE users SET proxy_url = NULL WHERE id = $1", txtid)
 			if err != nil {
@@ -4572,7 +4572,7 @@ func (s *server) SetProxy() http.HandlerFunc {
 			return
 		}
 
-		// Validate proxy URL
+
 		if t.ProxyURL == "" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing proxy_url in payload"))
 			return
@@ -4584,13 +4584,13 @@ func (s *server) SetProxy() http.HandlerFunc {
 			return
 		}
 
-		// Only allow http and socks5 proxies
+
 		if proxyURL.Scheme != "http" && proxyURL.Scheme != "socks5" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("only HTTP and SOCKS5 proxies are supported"))
 			return
 		}
 
-		// Store proxy configuration in database
+
 		_, err = s.db.Exec("UPDATE users SET proxy_url = $1 WHERE id = $2", t.ProxyURL, txtid)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to save proxy configuration"))
@@ -4610,7 +4610,7 @@ func (s *server) SetProxy() http.HandlerFunc {
 	}
 }
 
-// Configure S3
+
 func (s *server) ConfigureS3() http.HandlerFunc {
 	type s3ConfigStruct struct {
 		Enabled       bool   `json:"enabled"`
@@ -4636,7 +4636,7 @@ func (s *server) ConfigureS3() http.HandlerFunc {
 			return
 		}
 
-		// Validate media_delivery
+
 		if t.MediaDelivery != "" && t.MediaDelivery != "base64" && t.MediaDelivery != "s3" && t.MediaDelivery != "both" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("media_delivery must be 'base64', 's3', or 'both'"))
 			return
@@ -4646,7 +4646,7 @@ func (s *server) ConfigureS3() http.HandlerFunc {
 			t.MediaDelivery = "base64"
 		}
 
-		// Update database
+
 		_, err = s.db.Exec(`
 			UPDATE users SET 
 				s3_enabled = $1,
@@ -4668,7 +4668,7 @@ func (s *server) ConfigureS3() http.HandlerFunc {
 			return
 		}
 
-		// Initialize S3 client if enabled
+
 		if t.Enabled {
 			s3Config := &S3Config{
 				Enabled:       t.Enabled,
@@ -4704,7 +4704,7 @@ func (s *server) ConfigureS3() http.HandlerFunc {
 	}
 }
 
-// Get S3 Configuration
+
 func (s *server) GetS3Config() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
@@ -4739,7 +4739,7 @@ func (s *server) GetS3Config() http.HandlerFunc {
 			return
 		}
 
-		// Don't return secret key for security
+
 		config.AccessKey = "***" // Mask access key
 
 		responseJson, err := json.Marshal(config)
@@ -4751,12 +4751,12 @@ func (s *server) GetS3Config() http.HandlerFunc {
 	}
 }
 
-// Test S3 Connection
+
 func (s *server) TestS3Connection() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
-		// Get S3 config from database
+
 		var config struct {
 			Enabled       bool
 			Endpoint      string
@@ -4792,7 +4792,7 @@ func (s *server) TestS3Connection() http.HandlerFunc {
 			return
 		}
 
-		// Initialize S3 client
+
 		s3Config := &S3Config{
 			Enabled:       config.Enabled,
 			Endpoint:      config.Endpoint,
@@ -4811,7 +4811,7 @@ func (s *server) TestS3Connection() http.HandlerFunc {
 			return
 		}
 
-		// Test connection
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
@@ -4835,12 +4835,12 @@ func (s *server) TestS3Connection() http.HandlerFunc {
 	}
 }
 
-// Delete S3 Configuration
+
 func (s *server) DeleteS3Config() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
-		// Update database to remove S3 configuration
+
 		_, err := s.db.Exec(`
 			UPDATE users SET 
 				s3_enabled = false,
@@ -4860,7 +4860,7 @@ func (s *server) DeleteS3Config() http.HandlerFunc {
 			return
 		}
 
-		// Remove S3 client
+
 		GetS3Manager().RemoveClient(txtid)
 
 		response := map[string]interface{}{"Details": "S3 configuration deleted successfully"}

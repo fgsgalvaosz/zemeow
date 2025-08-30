@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// S3Config holds S3 configuration for a user
+
 type S3Config struct {
 	Enabled       bool
 	Endpoint      string
@@ -29,25 +29,25 @@ type S3Config struct {
 	RetentionDays int
 }
 
-// S3Manager manages S3 operations
+
 type S3Manager struct {
 	mu      sync.RWMutex
 	clients map[string]*s3.Client
 	configs map[string]*S3Config
 }
 
-// Global S3 manager instance
+
 var s3Manager = &S3Manager{
 	clients: make(map[string]*s3.Client),
 	configs: make(map[string]*S3Config),
 }
 
-// GetS3Manager returns the global S3 manager instance
+
 func GetS3Manager() *S3Manager {
 	return s3Manager
 }
 
-// InitializeS3Client creates or updates S3 client for a user
+
 func (m *S3Manager) InitializeS3Client(userID string, config *S3Config) error {
 	if !config.Enabled {
 		m.RemoveClient(userID)
@@ -57,14 +57,14 @@ func (m *S3Manager) InitializeS3Client(userID string, config *S3Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Create custom credentials provider
+
 	credProvider := credentials.NewStaticCredentialsProvider(
 		config.AccessKey,
 		config.SecretKey,
 		"",
 	)
 
-	// Configure S3 client
+
 	cfg := aws.Config{
 		Region:      config.Region,
 		Credentials: credProvider,
@@ -83,7 +83,7 @@ func (m *S3Manager) InitializeS3Client(userID string, config *S3Config) error {
 		cfg.EndpointResolverWithOptions = customResolver
 	}
 
-	// Create S3 client
+
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.UsePathStyle = config.PathStyle
 	})
@@ -95,7 +95,7 @@ func (m *S3Manager) InitializeS3Client(userID string, config *S3Config) error {
 	return nil
 }
 
-// RemoveClient removes S3 client for a user
+
 func (m *S3Manager) RemoveClient(userID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -104,7 +104,7 @@ func (m *S3Manager) RemoveClient(userID string) {
 	delete(m.configs, userID)
 }
 
-// GetClient returns S3 client for a user
+
 func (m *S3Manager) GetClient(userID string) (*s3.Client, *S3Config, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -115,25 +115,25 @@ func (m *S3Manager) GetClient(userID string) (*s3.Client, *S3Config, bool) {
 	return client, config, clientOk && configOk
 }
 
-// GenerateS3Key generates S3 object key based on message metadata
+
 func (m *S3Manager) GenerateS3Key(userID, contactJID, messageID string, mimeType string, isIncoming bool) string {
-	// Determine direction
+
 	direction := "outbox"
 	if isIncoming {
 		direction = "inbox"
 	}
 
-	// Clean contact JID
+
 	contactJID = strings.ReplaceAll(contactJID, "@", "_")
 	contactJID = strings.ReplaceAll(contactJID, ":", "_")
 
-	// Get current time
+
 	now := time.Now()
 	year := now.Format("2025")
 	month := now.Format("05")
 	day := now.Format("25")
 
-	// Determine media type folder
+
 	mediaType := "documents"
 	if strings.HasPrefix(mimeType, "image/") {
 		mediaType = "images"
@@ -143,7 +143,7 @@ func (m *S3Manager) GenerateS3Key(userID, contactJID, messageID string, mimeType
 		mediaType = "audio"
 	}
 
-	// Get file extension
+
 	ext := ".bin"
 	switch {
 	case strings.Contains(mimeType, "jpeg"), strings.Contains(mimeType, "jpg"):
@@ -172,7 +172,7 @@ func (m *S3Manager) GenerateS3Key(userID, contactJID, messageID string, mimeType
 		}
 	}
 
-	// Build S3 key
+
 	key := fmt.Sprintf("users/%s/%s/%s/%s/%s/%s/%s/%s%s",
 		userID,
 		direction,
@@ -188,20 +188,20 @@ func (m *S3Manager) GenerateS3Key(userID, contactJID, messageID string, mimeType
 	return key
 }
 
-// UploadToS3 uploads file to S3 and returns the key
+
 func (m *S3Manager) UploadToS3(ctx context.Context, userID string, key string, data []byte, mimeType string) error {
 	client, config, ok := m.GetClient(userID)
 	if !ok {
 		return fmt.Errorf("S3 client not initialized for user %s", userID)
 	}
 
-	// Set content type and cache headers for preview
+
 	contentType := mimeType
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
-	// Calculate expiration time based on retention days
+
 	var expires *time.Time
 	if config.RetentionDays > 0 {
 		expirationTime := time.Now().Add(time.Duration(config.RetentionDays) * 24 * time.Hour)
@@ -221,7 +221,7 @@ func (m *S3Manager) UploadToS3(ctx context.Context, userID string, key string, d
 		input.Expires = expires
 	}
 
-	// Add content disposition for inline preview
+
 	if strings.HasPrefix(mimeType, "image/") || strings.HasPrefix(mimeType, "video/") || mimeType == "application/pdf" {
 		input.ContentDisposition = aws.String("inline")
 	}
@@ -234,19 +234,19 @@ func (m *S3Manager) UploadToS3(ctx context.Context, userID string, key string, d
 	return nil
 }
 
-// GetPublicURL generates public URL for S3 object
+
 func (m *S3Manager) GetPublicURL(userID, key string) string {
 	_, config, ok := m.GetClient(userID)
 	if !ok {
 		return ""
 	}
 
-	// Use custom public URL if configured
+
 	if config.PublicURL != "" {
 		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(config.PublicURL, "/"), config.Bucket, key)
 	}
 
-	// Generate standard S3 URL
+
 	if config.PathStyle {
 		return fmt.Sprintf("%s/%s/%s",
 			strings.TrimRight(config.Endpoint, "/"),
@@ -254,7 +254,7 @@ func (m *S3Manager) GetPublicURL(userID, key string) string {
 			key)
 	}
 
-	// Virtual hosted-style URL
+
 	if strings.Contains(config.Endpoint, "amazonaws.com") {
 		return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s",
 			config.Bucket,
@@ -262,20 +262,20 @@ func (m *S3Manager) GetPublicURL(userID, key string) string {
 			key)
 	}
 
-	// For other S3-compatible services
+
 	endpoint := strings.TrimPrefix(config.Endpoint, "https://")
 	endpoint = strings.TrimPrefix(endpoint, "http://")
 	return fmt.Sprintf("https://%s.%s/%s", config.Bucket, endpoint, key)
 }
 
-// TestConnection tests S3 connection
+
 func (m *S3Manager) TestConnection(ctx context.Context, userID string) error {
 	client, config, ok := m.GetClient(userID)
 	if !ok {
 		return fmt.Errorf("S3 client not initialized for user %s", userID)
 	}
 
-	// Try to list objects with max 1 result
+
 	input := &s3.ListObjectsV2Input{
 		Bucket:  aws.String(config.Bucket),
 		MaxKeys: aws.Int32(1),
@@ -285,23 +285,23 @@ func (m *S3Manager) TestConnection(ctx context.Context, userID string) error {
 	return err
 }
 
-// ProcessMediaForS3 handles the complete media upload process
+
 func (m *S3Manager) ProcessMediaForS3(ctx context.Context, userID, contactJID, messageID string,
 	data []byte, mimeType string, fileName string, isIncoming bool) (map[string]interface{}, error) {
 
-	// Generate S3 key
+
 	key := m.GenerateS3Key(userID, contactJID, messageID, mimeType, isIncoming)
 
-	// Upload to S3
+
 	err := m.UploadToS3(ctx, userID, key, data, mimeType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload to S3: %w", err)
 	}
 
-	// Generate public URL
+
 	publicURL := m.GetPublicURL(userID, key)
 
-	// Return S3 metadata
+
 	s3Data := map[string]interface{}{
 		"url":      publicURL,
 		"key":      key,
@@ -314,7 +314,7 @@ func (m *S3Manager) ProcessMediaForS3(ctx context.Context, userID, contactJID, m
 	return s3Data, nil
 }
 
-// DeleteAllUserObjects deletes all user files from S3
+
 func (m *S3Manager) DeleteAllUserObjects(ctx context.Context, userID string) error {
 	client, config, ok := m.GetClient(userID)
 	if !ok {
@@ -338,7 +338,7 @@ func (m *S3Manager) DeleteAllUserObjects(ctx context.Context, userID string) err
 
 		for _, obj := range output.Contents {
 			toDelete = append(toDelete, types.ObjectIdentifier{Key: obj.Key})
-			// Delete in batches of 1000 (S3 limit)
+
 			if len(toDelete) == 1000 {
 				_, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 					Bucket: aws.String(config.Bucket),
@@ -358,7 +358,7 @@ func (m *S3Manager) DeleteAllUserObjects(ctx context.Context, userID string) err
 		}
 	}
 
-	// Delete any remaining objects
+
 	if len(toDelete) > 0 {
 		_, err := client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(config.Bucket),

@@ -143,7 +143,7 @@ BEGIN
 END $$;
 `
 
-// GenerateRandomID creates a random string ID
+
 func GenerateRandomID() (string, error) {
 	bytes := make([]byte, 16) // 128 bits
 	if _, err := rand.Read(bytes); err != nil {
@@ -152,20 +152,20 @@ func GenerateRandomID() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// Initialize the database with migrations
+
 func initializeSchema(db *sqlx.DB) error {
-	// Create migrations table if it doesn't exist
+
 	if err := createMigrationsTable(db); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
-	// Get already applied migrations
+
 	applied, err := getAppliedMigrations(db)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
 	}
 
-	// Apply missing migrations
+
 	for _, migration := range migrations {
 		if _, ok := applied[migration.ID]; !ok {
 			if err := applyMigration(db, migration); err != nil {
@@ -250,7 +250,7 @@ func applyMigration(db *sqlx.DB, migration Migration) error {
 	}()
 
 	if migration.ID == 1 {
-		// Handle initial schema creation differently per database
+
 		if db.DriverName() == "sqlite" {
 			err = createTableIfNotExistsSQLite(tx, "users", `
                 CREATE TABLE users (
@@ -282,7 +282,7 @@ func applyMigration(db *sqlx.DB, migration Migration) error {
 		}
 	} else if migration.ID == 4 {
 		if db.DriverName() == "sqlite" {
-			// Handle S3 columns for SQLite
+
 			err = addColumnIfNotExistsSQLite(tx, "users", "s3_enabled", "BOOLEAN DEFAULT 0")
 			if err == nil {
 				err = addColumnIfNotExistsSQLite(tx, "users", "s3_endpoint", "TEXT DEFAULT ''")
@@ -322,7 +322,7 @@ func applyMigration(db *sqlx.DB, migration Migration) error {
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
 
-	// Record the migration
+
 	if _, err = tx.Exec(`
         INSERT INTO migrations (id, name) 
         VALUES ($1, $2)`, migration.ID, migration.Name); err != nil {
@@ -348,13 +348,13 @@ func createTableIfNotExistsSQLite(tx *sqlx.Tx, tableName, createSQL string) erro
 	return nil
 }
 func sqliteChangeIDType(tx *sqlx.Tx) error {
-	// SQLite requires a more complex approach:
-	// 1. Create new table with string ID
-	// 2. Copy data with new UUIDs
-	// 3. Drop old table
-	// 4. Rename new table
 
-	// Step 1: Get the current schema
+
+
+
+
+
+
 	var tableInfo string
 	err := tx.Get(&tableInfo, `
         SELECT sql FROM sqlite_master
@@ -363,7 +363,7 @@ func sqliteChangeIDType(tx *sqlx.Tx) error {
 		return fmt.Errorf("failed to get table info: %w", err)
 	}
 
-	// Step 2: Create new table with string ID
+
 	newTableSQL := strings.Replace(tableInfo,
 		"CREATE TABLE users (",
 		"CREATE TABLE users_new (id TEXT PRIMARY KEY, ", 1)
@@ -374,13 +374,13 @@ func sqliteChangeIDType(tx *sqlx.Tx) error {
 		return fmt.Errorf("failed to create new table: %w", err)
 	}
 
-	// Step 3: Copy data with new UUIDs
+
 	columns, err := getTableColumns(tx, "users")
 	if err != nil {
 		return fmt.Errorf("failed to get table columns: %w", err)
 	}
 
-	// Remove 'id' from columns list
+
 	var filteredColumns []string
 	for _, col := range columns {
 		if col != "id" {
@@ -396,12 +396,12 @@ func sqliteChangeIDType(tx *sqlx.Tx) error {
 		return fmt.Errorf("failed to copy data: %w", err)
 	}
 
-	// Step 4: Drop old table
+
 	if _, err = tx.Exec("DROP TABLE users"); err != nil {
 		return fmt.Errorf("failed to drop old table: %w", err)
 	}
 
-	// Step 5: Rename new table
+
 	if _, err = tx.Exec("ALTER TABLE users_new RENAME TO users"); err != nil {
 		return fmt.Errorf("failed to rename table: %w", err)
 	}
@@ -434,7 +434,7 @@ func getTableColumns(tx *sqlx.Tx, tableName string) ([]string, error) {
 }
 
 func migrateSQLiteIDToString(tx *sqlx.Tx) error {
-	// 1. Check if we need to do the migration
+
 	var currentType string
 	err := tx.QueryRow(`
         SELECT type FROM pragma_table_info('users')
@@ -444,11 +444,11 @@ func migrateSQLiteIDToString(tx *sqlx.Tx) error {
 	}
 
 	if currentType != "INTEGER" {
-		// No migration needed
+
 		return nil
 	}
 
-	// 2. Create new table with string ID
+
 	_, err = tx.Exec(`
         CREATE TABLE users_new (
             id TEXT PRIMARY KEY,
@@ -466,7 +466,7 @@ func migrateSQLiteIDToString(tx *sqlx.Tx) error {
 		return fmt.Errorf("failed to create new table: %w", err)
 	}
 
-	// 3. Copy data with new UUIDs
+
 	_, err = tx.Exec(`
         INSERT INTO users_new
         SELECT
@@ -478,13 +478,13 @@ func migrateSQLiteIDToString(tx *sqlx.Tx) error {
 		return fmt.Errorf("failed to copy data: %w", err)
 	}
 
-	// 4. Drop old table
+
 	_, err = tx.Exec(`DROP TABLE users`)
 	if err != nil {
 		return fmt.Errorf("failed to drop old table: %w", err)
 	}
 
-	// 5. Rename new table
+
 	_, err = tx.Exec(`ALTER TABLE users_new RENAME TO users`)
 	if err != nil {
 		return fmt.Errorf("failed to rename table: %w", err)

@@ -11,7 +11,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-// Logger é a interface centralizada para todos os logs da aplicação
+
 type Logger interface {
 	Debug() *zerolog.Event
 	Info() *zerolog.Event
@@ -22,31 +22,31 @@ type Logger interface {
 	Level(level zerolog.Level) Logger
 }
 
-// AppLogger implementa a interface Logger usando zerolog
+
 type AppLogger struct {
 	logger zerolog.Logger
 }
 
-// WhatsAppLogger adapta o logger da aplicação para o whatsmeow
+
 type WhatsAppLogger struct {
 	logger zerolog.Logger
 	module string
 }
 
 var (
-	// Global logger instance
+
 	globalLogger *AppLogger
 )
 
-// Init inicializa o sistema de logging global
+
 func Init(level string, pretty bool) {
-	// Configure log level
+
 	logLevel, err := zerolog.ParseLevel(level)
 	if err != nil {
 		logLevel = zerolog.InfoLevel
 	}
 
-	// Configure output
+
 	var output io.Writer = os.Stdout
 	if pretty {
 		output = zerolog.ConsoleWriter{
@@ -55,7 +55,7 @@ func Init(level string, pretty bool) {
 		}
 	}
 
-	// Create global logger
+
 	logger := zerolog.New(output).Level(logLevel).With().
 		Timestamp().
 		Caller().
@@ -65,7 +65,7 @@ func Init(level string, pretty bool) {
 	log.Logger = logger
 }
 
-// Get retorna a instância global do logger
+
 func Get() Logger {
 	if globalLogger == nil {
 		Init("info", true) // Default initialization
@@ -73,7 +73,7 @@ func Get() Logger {
 	return globalLogger
 }
 
-// GetWithSession retorna um logger com contexto de sessão
+
 func GetWithSession(sessionID string) Logger {
 	if globalLogger == nil {
 		Init("info", true)
@@ -83,8 +83,8 @@ func GetWithSession(sessionID string) Logger {
 	}
 }
 
-// WhatsAppLoggerInterface define a interface para o logger do WhatsApp
-// WhatsAppLoggerInterface implementa waLog.Logger do whatsmeow
+
+
 type WhatsAppLoggerInterface interface {
 	Errorf(msg string, args ...interface{})
 	Warnf(msg string, args ...interface{})
@@ -93,7 +93,7 @@ type WhatsAppLoggerInterface interface {
 	Sub(module string) waLog.Logger
 }
 
-// GetWhatsAppLogger retorna um logger compatível com whatsmeow
+
 func GetWhatsAppLogger(module string) waLog.Logger {
 	if globalLogger == nil {
 		Init("info", true)
@@ -105,7 +105,7 @@ func GetWhatsAppLogger(module string) waLog.Logger {
 	}
 }
 
-// AppLogger methods
+
 func (l *AppLogger) Debug() *zerolog.Event {
 	return l.logger.Debug()
 }
@@ -134,7 +134,7 @@ func (l *AppLogger) Level(level zerolog.Level) Logger {
 	return &AppLogger{logger: l.logger.Level(level)}
 }
 
-// WhatsAppLogger methods
+
 func (w *WhatsAppLogger) Errorf(msg string, args ...interface{}) {
 	w.logger.Error().Msgf(msg, args...)
 }
@@ -158,7 +158,7 @@ func (w *WhatsAppLogger) Sub(module string) waLog.Logger {
 	}
 }
 
-// Context helpers
+
 func WithContext(ctx context.Context) Logger {
 	if globalLogger == nil {
 		Init("info", true)

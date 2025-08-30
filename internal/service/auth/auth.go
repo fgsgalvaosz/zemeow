@@ -12,14 +12,14 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
-// AuthContext representa o contexto de autenticação
+
 type AuthContext struct {
 	SessionID string
 	Role      string
 	IsAdmin   bool
 }
 
-// AuthService gerencia autenticação e autorização
+
 type AuthService struct {
 	sessionRepo repositories.SessionRepository
 	config      *config.Config
@@ -28,7 +28,7 @@ type AuthService struct {
 	mutex       sync.RWMutex
 }
 
-// NewAuthService cria uma nova instância do serviço de autenticação
+
 func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Config) (*AuthService, error) {
 	service := &AuthService{
 		sessionRepo: sessionRepo,
@@ -37,7 +37,7 @@ func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Conf
 		apiKeys:     make(map[string]*AuthContext),
 	}
 
-	// Gerar token de admin padrão
+
 	adminToken := service.generateAPIKey()
 	service.apiKeys[adminToken] = &AuthContext{
 		SessionID: "admin",
@@ -49,7 +49,7 @@ func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Conf
 	return service, nil
 }
 
-// ValidateAPIKey valida uma API Key
+
 func (s *AuthService) ValidateAPIKey(apiKey string) (*AuthContext, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -61,14 +61,14 @@ func (s *AuthService) ValidateAPIKey(apiKey string) (*AuthContext, error) {
 	return nil, fmt.Errorf("invalid API key")
 }
 
-// GenerateAPIKey gera uma nova API Key para uma sessão
-func (s *AuthService) GenerateAPIKey(sessionID string) (map[string]interface{}, error) {
-	// Mock: Verificação simplificada de sessão
 
-	// Gerar nova API Key
+func (s *AuthService) GenerateAPIKey(sessionID string) (map[string]interface{}, error) {
+
+
+
 	apiKey := s.generateAPIKey()
 
-	// Armazenar no cache
+
 	s.mutex.Lock()
 	s.apiKeys[apiKey] = &AuthContext{
 		SessionID: sessionID,
@@ -88,7 +88,7 @@ func (s *AuthService) GenerateAPIKey(sessionID string) (map[string]interface{}, 
 	return response, nil
 }
 
-// RevokeAPIKey revoga uma API Key
+
 func (s *AuthService) RevokeAPIKey(apiKey string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -102,7 +102,7 @@ func (s *AuthService) RevokeAPIKey(apiKey string) error {
 	return nil
 }
 
-// GetAPIKeyInfo retorna informações sobre uma API Key
+
 func (s *AuthService) GetAPIKeyInfo(apiKey string) (map[string]interface{}, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -121,7 +121,7 @@ func (s *AuthService) GetAPIKeyInfo(apiKey string) (map[string]interface{}, erro
 	}, nil
 }
 
-// GetCacheStats retorna estatísticas do cache
+
 func (s *AuthService) GetCacheStats() map[string]interface{} {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -132,12 +132,12 @@ func (s *AuthService) GetCacheStats() map[string]interface{} {
 	}
 }
 
-// ClearCache limpa o cache de API Keys
+
 func (s *AuthService) ClearCache() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Manter apenas o token de admin
+
 	adminKeys := make(map[string]*AuthContext)
 	for key, ctx := range s.apiKeys {
 		if ctx.IsAdmin {
@@ -149,7 +149,7 @@ func (s *AuthService) ClearCache() {
 	s.logger.Info().Msg("API key cache cleared")
 }
 
-// generateAPIKey gera uma API Key aleatória
+
 func (s *AuthService) generateAPIKey() string {
 	bytes := make([]byte, 32)
 	rand.Read(bytes)

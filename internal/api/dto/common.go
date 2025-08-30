@@ -2,7 +2,7 @@ package dto
 
 import "time"
 
-// BaseResponse estrutura base para respostas da API
+
 type BaseResponse struct {
 	Success   bool        `json:"success"`
 	Message   string      `json:"message,omitempty"`
@@ -12,7 +12,7 @@ type BaseResponse struct {
 	Data      interface{} `json:"data,omitempty"`
 }
 
-// ErrorResponse estrutura para respostas de erro
+
 type ErrorResponse struct {
 	Success   bool   `json:"success"`
 	Error     string `json:"error"`
@@ -22,13 +22,13 @@ type ErrorResponse struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
-// PaginationResponse estrutura para respostas paginadas
+
 type PaginationResponse struct {
 	BaseResponse
 	Pagination PaginationInfo `json:"pagination"`
 }
 
-// PaginationInfo informações de paginação
+
 type PaginationInfo struct {
 	Page      int `json:"page"`
 	Limit     int `json:"limit"`
@@ -38,7 +38,7 @@ type PaginationInfo struct {
 	HasPrev   bool `json:"has_prev"`
 }
 
-// NewSuccessResponse cria uma resposta de sucesso
+
 func NewSuccessResponse(message string, data interface{}) *BaseResponse {
 	return &BaseResponse{
 		Success:   true,
@@ -48,7 +48,7 @@ func NewSuccessResponse(message string, data interface{}) *BaseResponse {
 	}
 }
 
-// NewErrorResponse cria uma resposta de erro
+
 func NewErrorResponse(code, message string, status int) *ErrorResponse {
 	return &ErrorResponse{
 		Success:   false,
@@ -59,7 +59,7 @@ func NewErrorResponse(code, message string, status int) *ErrorResponse {
 	}
 }
 
-// NewPaginationResponse cria uma resposta paginada
+
 func NewPaginationResponse(message string, data interface{}, page, limit, total int) *PaginationResponse {
 	totalPages := (total + limit - 1) / limit
 	if totalPages == 0 {

@@ -30,14 +30,14 @@ func InitializeDatabase(exPath string) (*sqlx.DB, error) {
 }
 
 func getDatabaseConfig(exPath string) DatabaseConfig {
-	// Check for PostgreSQL configuration
+
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 
-	// If all PostgreSQL configs are present, use PostgreSQL
+
 	if dbUser != "" && dbPassword != "" && dbName != "" && dbHost != "" && dbPort != "" {
 		return DatabaseConfig{
 			Type:     "postgres",
@@ -49,7 +49,7 @@ func getDatabaseConfig(exPath string) DatabaseConfig {
 		}
 	}
 
-	// Default to SQLite
+
 	return DatabaseConfig{
 		Type: "sqlite",
 		Path: filepath.Join(exPath, "dbdata"),
@@ -75,7 +75,7 @@ func initializePostgres(config DatabaseConfig) (*sqlx.DB, error) {
 }
 
 func initializeSQLite(config DatabaseConfig) (*sqlx.DB, error) {
-	// Ensure dbdata directory exists
+
 	if err := os.MkdirAll(config.Path, 0751); err != nil {
 		return nil, fmt.Errorf("could not create dbdata directory: %w", err)
 	}

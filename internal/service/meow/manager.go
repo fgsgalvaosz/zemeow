@@ -3,6 +3,7 @@ package meow
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -12,11 +13,12 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/mdp/qrterminal/v3"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types/events"
 )
 
-// WhatsAppManager gerencia múltiplas sessões WhatsApp de baixo nível
+
 type WhatsAppManager struct {
 	mu          sync.RWMutex
 	clients     map[string]*MyClient
@@ -30,7 +32,7 @@ type WhatsAppManager struct {
 	webhookChan chan WebhookEvent
 }
 
-// NewWhatsAppManager cria um novo gerenciador de sessões WhatsApp
+
 func NewWhatsAppManager(container *sqlstore.Container, repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -47,11 +49,11 @@ func NewWhatsAppManager(container *sqlstore.Container, repository repositories.S
 	}
 }
 
-// Start inicia o gerenciador de sessões WhatsApp
+
 func (m *WhatsAppManager) Start() error {
 	m.logger.Info().Msg("Starting WhatsApp manager")
 
-	// Carregar sessões existentes do banco
+
 	sessions, err := m.repository.GetAll(nil)
 	if err != nil {
 		return fmt.Errorf("failed to load sessions: %w", err)
@@ -60,82 +62,85 @@ func (m *WhatsAppManager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Inicializar sessões
+
 	for _, session := range sessions.Sessions {
 		if err := m.initializeSession(&session); err != nil {
-			m.logger.Warn().Err(err).Str("session_id", session.SessionID).Msg("Failed to initialize session")
+			m.logger.Warn().Err(err).Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Failed to initialize session")
 			continue
 		}
-		m.logger.Info().Str("session_id", session.SessionID).Msg("Session initialized")
+		m.logger.Info().Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Session initialized")
 	}
 
 	m.logger.Info().Int("session_count", len(m.sessions)).Msg("WhatsApp manager started successfully")
 	return nil
 }
 
-// Stop para o gerenciador de sessões WhatsApp
+
 func (m *WhatsAppManager) Stop() {
 	m.logger.Info().Msg("Stopping WhatsApp manager")
 
-	// Cancelar contexto
+
 	m.cancel()
 
-	// Desconectar todos os clientes
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for sessionID, client := range m.clients {
-		m.logger.Info().Str("session_id", sessionID).Msg("Disconnecting client")
+	for sessionName, client := range m.clients {
+		m.logger.Info().Str("session_name", sessionName).Msg("Disconnecting client")
 		client.Disconnect()
 	}
 
 	m.logger.Info().Msg("WhatsApp manager stopped")
 }
 
-// initializeSession inicializa uma sessão a partir do banco de dados
+
 func (m *WhatsAppManager) initializeSession(session *models.Session) error {
-	// Obter device store
-	deviceStore, err := m.container.GetFirstDevice()
+
+	deviceStore, err := m.container.GetFirstDevice(context.Background())
 	if err != nil {
-		// Criar novo device se não existir
+
 		deviceStore = m.container.NewDevice()
 	}
 
-	// Criar cliente WhatsApp
-	client := NewMyClient(session.SessionID, deviceStore, m.webhookChan)
 
-	// Registrar handlers
-	m.registerClientHandlers(client, session.SessionID)
+	sessionID := session.GetSessionID()
+	client := NewMyClient(sessionID, deviceStore, m.webhookChan)
 
-	// Armazenar na memória
-	m.sessions[session.SessionID] = session
-	m.clients[session.SessionID] = client
+
+	client.SetOnPairSuccess(m.onPairSuccess)
+
+
+	m.registerClientHandlers(client, sessionID)
+
+
+	m.sessions[sessionID] = session
+	m.clients[sessionID] = client
 
 	return nil
 }
 
-// CreateSession cria uma nova sessão WhatsApp
-func (m *WhatsAppManager) CreateSession(sessionID string, config *models.SessionConfig) (*models.Session, error) {
+
+func (m *WhatsAppManager) CreateSession(sessionIdentifier string, config *models.SessionConfig) (*models.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Verificar se a sessão já existe
-	if _, exists := m.clients[sessionID]; exists {
-		return nil, fmt.Errorf("session already exists")
-	}
 
-	// Criar nova sessão no banco
+	sessionID := uuid.New()
 	session := &models.Session{
-		ID:        uuid.New(),
-		SessionID: sessionID,
-		Name:      config.Name,
-		// Token:     uuid.New().String(),  // Removendo a referência ao token
+		ID:        sessionID,
+		Name:      config.Name, // nome fornecido na config
 		Status:    models.SessionStatusDisconnected,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	// Configurar proxy se fornecido
+
+	if _, exists := m.clients[sessionID.String()]; exists {
+		return nil, fmt.Errorf("session already exists")
+	}
+
+
 	if config.Proxy != nil {
 		session.ProxyEnabled = true
 		session.ProxyHost = &config.Proxy.Host
@@ -144,157 +149,218 @@ func (m *WhatsAppManager) CreateSession(sessionID string, config *models.Session
 		session.ProxyPassword = &config.Proxy.Password
 	}
 
-	// Configurar webhook se fornecido
+
 	if config.Webhook != nil {
 		session.WebhookURL = &config.Webhook.URL
 		session.WebhookEvents = pq.StringArray(config.Webhook.Events)
 	}
 
-	// Salvar no banco
+
 	if err := m.repository.Create(session); err != nil {
 		return nil, fmt.Errorf("failed to create session in database: %w", err)
 	}
 
-	// Inicializar sessão
+
 	if err := m.initializeSession(session); err != nil {
 		m.repository.Delete(session.ID) // Limpar se falhar
 		return nil, fmt.Errorf("failed to initialize session: %w", err)
 	}
 
-	m.logger.Info().Str("session_id", sessionID).Msg("Session created successfully")
+	m.logger.Info().Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Session created successfully")
 	return session, nil
 }
 
-// GetSession retorna uma sessão pelo ID
-func (m *WhatsAppManager) GetSession(sessionID string) (*models.Session, error) {
+
+func (m *WhatsAppManager) GetSession(identifier string) (*models.Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	session, exists := m.sessions[sessionID]
-	if !exists {
-		return nil, fmt.Errorf("session not found")
+
+	if session, exists := m.sessions[identifier]; exists {
+		return session, nil
 	}
 
-	return session, nil
+
+	for _, session := range m.sessions {
+		if session.Name == identifier {
+			return session, nil
+		}
+	}
+
+	return nil, fmt.Errorf("session not found")
 }
 
-// GetClient retorna o cliente WhatsApp de uma sessão
-func (m *WhatsAppManager) GetClient(sessionID string) (*MyClient, error) {
+
+func (m *WhatsAppManager) GetClient(identifier string) (*MyClient, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	client, exists := m.clients[sessionID]
-	if !exists {
-		return nil, fmt.Errorf("client not found")
+
+	if client, exists := m.clients[identifier]; exists {
+		return client, nil
 	}
 
-	return client, nil
+
+	for sessionID, session := range m.sessions {
+		if session.Name == identifier {
+			if client, exists := m.clients[sessionID]; exists {
+				return client, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("client not found")
 }
 
-// ConnectSession conecta uma sessão específica
-func (m *WhatsAppManager) ConnectSession(sessionID string) (*QRCodeData, error) {
+
+func (m *WhatsAppManager) ConnectSession(sessionName string) (*QRCodeData, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	client, exists := m.clients[sessionID]
+	m.logger.Info().Str("session_name", sessionName).Msg("Connecting session to WhatsApp")
+
+	client, exists := m.clients[sessionName]
 	if !exists {
 		return nil, fmt.Errorf("session not found")
 	}
 
-	// Verificar se já está conectado
-	if client.IsConnected() {
+
+	if client.IsLoggedIn() && client.IsConnected() {
 		return nil, fmt.Errorf("session already connected")
 	}
 
-	// Atualizar status para connecting
-	m.repository.UpdateStatus(sessionID, models.SessionStatusConnecting)
 
-	// Canal para receber QR code
-	qrChan := make(chan string, 1)
-	var qrEventID uint32
+	if client.client.IsConnected() {
+		m.logger.Info().Str("session_name", sessionName).Msg("Cleaning up existing connection")
+		client.Disconnect()
+		time.Sleep(500 * time.Millisecond) // Breve pausa para limpeza
+	}
 
-	// Registrar handler para QR code
-	qrEventID = client.client.AddEventHandler(func(evt interface{}) {
-		if qr, ok := evt.(*events.QR); ok {
-			select {
-			case qrChan <- qr.Codes[0]:
-			default:
-			}
-		}
-	})
 
-	// Conectar
-	err := client.Connect()
+	if err := m.repository.UpdateStatus(sessionName, models.SessionStatusConnecting); err != nil {
+		return nil, fmt.Errorf("failed to update status: %w", err)
+	}
+
+
+	if client.client.Store.ID == nil {
+
+		return m.handleQRCodeFlow(sessionName, client)
+	} else {
+
+		return m.handleDirectConnection(sessionName, client)
+	}
+}
+
+
+func (m *WhatsAppManager) handleQRCodeFlow(sessionName string, client *MyClient) (*QRCodeData, error) {
+	m.logger.Info().Str("session_name", sessionName).Msg("Starting QR code flow")
+
+
+	qrChan, err := client.client.GetQRChannel(context.Background())
 	if err != nil {
-		client.client.RemoveEventHandler(qrEventID)
-		m.repository.UpdateStatus(sessionID, models.SessionStatusDisconnected)
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to get QR channel")
+		m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected)
+		return nil, fmt.Errorf("failed to get QR channel: %w", err)
+	}
+
+
+	go m.handleQREvents(sessionName, qrChan, client)
+
+
+	err = client.Connect()
+	if err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to connect client")
+		m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected)
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Aguardar QR code ou timeout
+
+	return m.waitForQRCode(sessionName, qrChan, client)
+}
+
+
+func (m *WhatsAppManager) handleDirectConnection(sessionName string, client *MyClient) (*QRCodeData, error) {
+	m.logger.Info().Str("session_name", sessionName).Msg("Already logged in, connecting directly")
+
+	err := client.Connect()
+	if err != nil {
+		m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected)
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+
+
+	m.repository.UpdateStatus(sessionName, models.SessionStatusConnected)
+	return nil, fmt.Errorf("already logged in, no QR code needed")
+}
+
+
+func (m *WhatsAppManager) waitForQRCode(sessionName string, qrChan <-chan whatsmeow.QRChannelItem, client *MyClient) (*QRCodeData, error) {
 	select {
-	case qrCode := <-qrChan:
-		client.RemoveEventHandler(qrEventID)
-		return &QRCodeData{
-			Code:      qrCode,
-			Timeout:   int(m.config.WhatsApp.QRCodeTimeout.Seconds()),
-			Timestamp: time.Now(),
-		}, nil
+	case evt := <-qrChan:
+		if evt.Event == "code" {
+			return &QRCodeData{
+				Code:      evt.Code,
+				Timeout:   int(m.config.WhatsApp.QRCodeTimeout.Seconds()),
+				Timestamp: time.Now(),
+			}, nil
+		} else {
+			m.logger.Warn().Str("session_name", sessionName).Str("event", evt.Event).Msg("Unexpected QR event")
+			return nil, fmt.Errorf("unexpected QR event: %s", evt.Event)
+		}
 	case <-time.After(m.config.WhatsApp.QRCodeTimeout):
-		client.RemoveEventHandler(qrEventID)
 		client.Disconnect()
-		m.repository.UpdateStatus(sessionID, models.SessionStatusDisconnected)
+		m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected)
 		return nil, fmt.Errorf("QR code timeout")
 	}
 }
 
-// DisconnectSession desconecta uma sessão específica
-func (m *WhatsAppManager) DisconnectSession(sessionID string) error {
+
+func (m *WhatsAppManager) DisconnectSession(sessionName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	client, exists := m.clients[sessionID]
+	client, exists := m.clients[sessionName]
 	if !exists {
 		return fmt.Errorf("session not found")
 	}
 
 	client.Disconnect()
-	m.repository.UpdateStatus(sessionID, models.SessionStatusDisconnected)
+	m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected)
 
-	m.logger.Info().Str("session_id", sessionID).Msg("Session disconnected")
+	m.logger.Info().Str("session_name", sessionName).Msg("Session disconnected")
 	return nil
 }
 
-// DeleteSession remove uma sessão completamente
-func (m *WhatsAppManager) DeleteSession(sessionID string) error {
+
+func (m *WhatsAppManager) DeleteSession(sessionName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Desconectar se estiver conectado
-	if client, exists := m.clients[sessionID]; exists {
+
+	if client, exists := m.clients[sessionName]; exists {
 		client.Disconnect()
-		delete(m.clients, sessionID)
+		delete(m.clients, sessionName)
 	}
 
-	// Remover da memória
-	delete(m.sessions, sessionID)
 
-	// Remover do banco
-	err := m.repository.DeleteBySessionID(sessionID)
+	delete(m.sessions, sessionName)
+
+
+	err := m.repository.DeleteByIdentifier(sessionName)
 	if err != nil {
 		return fmt.Errorf("failed to delete session from database: %w", err)
 	}
 
-	m.logger.Info().Str("session_id", sessionID).Msg("Session deleted")
+	m.logger.Info().Str("session_name", sessionName).Msg("Session deleted")
 	return nil
 }
 
-// GetConnectionInfo retorna informações de conexão de uma sessão
-func (m *WhatsAppManager) GetConnectionInfo(sessionID string) (*ConnectionInfo, error) {
+
+func (m *WhatsAppManager) GetConnectionInfo(sessionName string) (*ConnectionInfo, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	client, exists := m.clients[sessionID]
+	client, exists := m.clients[sessionName]
 	if !exists {
 		return nil, fmt.Errorf("session not found")
 	}
@@ -316,12 +382,12 @@ func (m *WhatsAppManager) GetConnectionInfo(sessionID string) (*ConnectionInfo, 
 	}, nil
 }
 
-// ListSessions retorna todas as sessões ativas
+
 func (m *WhatsAppManager) ListSessions() map[string]*models.Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Criar cópia para evitar race conditions
+
 	result := make(map[string]*models.Session)
 	for k, v := range m.sessions {
 		result[k] = v
@@ -329,8 +395,103 @@ func (m *WhatsAppManager) ListSessions() map[string]*models.Session {
 	return result
 }
 
-// registerClientHandlers registra handlers para eventos do cliente
-func (m *WhatsAppManager) registerClientHandlers(client *MyClient, sessionID string) {
-	// Os handlers são registrados no próprio MyClient através do setupDefaultEventHandlers
-	// Nenhuma ação adicional necessária aqui
+
+func (m *WhatsAppManager) registerClientHandlers(client *MyClient, sessionName string) {
+
+
 }
+
+
+func (m *WhatsAppManager) handleQREvents(sessionName string, qrChan <-chan whatsmeow.QRChannelItem, client *MyClient) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error().Interface("panic", r).Str("session_name", sessionName).Msg("Panic in QR event handler")
+		}
+	}()
+
+	for evt := range qrChan {
+		m.logger.Info().Str("session_name", sessionName).Str("event", evt.Event).Msg("QR event received")
+
+		switch evt.Event {
+		case "code":
+			m.handleQRCodeEvent(sessionName, evt.Code)
+
+		case "timeout":
+			m.handleQRTimeoutEvent(sessionName, client)
+
+		case "success":
+			m.logger.Info().Str("session_name", sessionName).Msg("QR pairing successful! (handled by PairSuccess event)")
+
+		default:
+			m.logger.Info().Str("session_name", sessionName).Str("event", evt.Event).Msg("Unknown QR event")
+		}
+	}
+}
+
+
+func (m *WhatsAppManager) handleQRCodeEvent(sessionName, qrCode string) {
+	m.logger.Info().Str("session_name", sessionName).Msg("QR Code generated! Scan with WhatsApp:")
+	m.logger.Info().Str("session_name", sessionName).Str("qr_code", qrCode).Msg("QR Code data")
+
+
+	if err := m.displayQRInTerminal(qrCode, sessionName); err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to display QR in terminal")
+	}
+}
+
+
+func (m *WhatsAppManager) handleQRTimeoutEvent(sessionName string, client *MyClient) {
+	m.logger.Warn().Str("session_name", sessionName).Msg("QR code timeout")
+
+
+	if err := m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected); err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to update status on timeout")
+	}
+
+
+	if err := m.repository.ClearQRCode(sessionName); err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to clear QR code on timeout")
+	}
+
+	client.Disconnect()
+}
+
+
+func (m *WhatsAppManager) displayQRInTerminal(qrCode, sessionName string) error {
+
+	fmt.Printf("\n=== QR CODE FOR SESSION %s ===\n", sessionName)
+	fmt.Println("Scan this QR code with your WhatsApp app:")
+	fmt.Println("1. Open WhatsApp on your phone")
+	fmt.Println("2. Go to Settings > Linked Devices")
+	fmt.Println("3. Tap 'Link a Device'")
+	fmt.Println("4. Scan the QR code below")
+	fmt.Println("=============================")
+
+
+	qrterminal.GenerateHalfBlock(qrCode, qrterminal.L, os.Stdout)
+	fmt.Printf("QR code: %s\n", qrCode)
+	fmt.Println("===============================")
+
+
+	m.logger.Info().Str("session_name", sessionName).Str("qr_data", qrCode).Msg("QR Code displayed in terminal")
+
+	return nil
+}
+
+
+func (m *WhatsAppManager) onPairSuccess(sessionName, jid string) {
+	m.logger.Info().Str("session_name", sessionName).Str("jid", jid).Msg("QR pairing successful! Updating database...")
+
+
+	if err := m.repository.UpdateStatusAndJID(sessionName, models.SessionStatusConnected, &jid); err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Str("jid", jid).Msg("Failed to update status and JID on pair success")
+	} else {
+		m.logger.Info().Str("session_name", sessionName).Str("jid", jid).Msg("Session connected and JID updated successfully")
+	}
+
+
+	if err := m.repository.ClearQRCode(sessionName); err != nil {
+		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to clear QR code")
+	}
+}
+

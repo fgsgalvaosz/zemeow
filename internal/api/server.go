@@ -16,7 +16,7 @@ import (
 	"github.com/felipe/zemeow/internal/service/session"
 )
 
-// Server representa o servidor HTTP
+
 type Server struct {
 	app            *fiber.App
 	config         *config.Config
@@ -24,14 +24,14 @@ type Server struct {
 	router         *routes.Router
 }
 
-// NewServer cria uma nova instância do servidor
+
 func NewServer(
 	cfg *config.Config,
 	sessionRepo repositories.SessionRepository,
 	sessionService interface{},
 	authService interface{},
 ) *Server {
-	// Configurar Fiber
+
 	app := fiber.New(fiber.Config{
 		AppName:      "ZeMeow API",
 		ServerHeader: "ZeMeow/1.0",
@@ -53,16 +53,16 @@ func NewServer(
 		},
 	})
 
-	// Criar handlers
+
 	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service), sessionRepo)
 	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service))
 	webhookHandler := handlers.NewWebhookHandler()
 	groupHandler := handlers.NewGroupHandler(sessionService.(session.Service))
 
-	// Criar middleware de autenticação
+
 	authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
 
-	// Configurar router
+
 	routerConfig := &routes.RouterConfig{
 		AuthMiddleware: authMiddleware,
 		SessionHandler: sessionHandler,
@@ -80,23 +80,23 @@ func NewServer(
 	}
 }
 
-// SetupRoutes configura todas as rotas da API
+
 func (s *Server) SetupRoutes() {
-	// Middleware global de recuperação de pânico
+
 	s.app.Use(recover.New())
 
-	// Configurar rotas usando o router modular
+
 	s.router.SetupRoutes()
 
 	s.logger.Info().Msg("API routes configured successfully")
 }
 
-// Start inicia o servidor HTTP
+
 func (s *Server) Start() error {
-	// Configurar rotas
+
 	s.SetupRoutes()
 
-	// Obter porta da configuração
+
 	port := s.config.Server.Port
 	if port == 0 {
 		port = 8080 // porta padrão
@@ -106,17 +106,17 @@ func (s *Server) Start() error {
 
 	s.logger.Info().Int("port", port).Msg("Starting HTTP server")
 
-	// Iniciar servidor
+
 	return s.app.Listen(address)
 }
 
-// Stop para o servidor HTTP
+
 func (s *Server) Stop() error {
 	s.logger.Info().Msg("Stopping HTTP server")
 	return s.app.Shutdown()
 }
 
-// GetApp retorna a instância do Fiber app
+
 func (s *Server) GetApp() *fiber.App {
 	return s.app
 }

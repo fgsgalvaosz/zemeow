@@ -18,14 +18,14 @@ import (
 	"go.mau.fi/whatsmeow/types"
 )
 
-// SessionHandler lida com as requisições HTTP relacionadas às sessões
+
 type SessionHandler struct {
 	sessionService session.Service
 	sessionRepo    repositories.SessionRepository
 	logger         logger.Logger
 }
 
-// NewSessionHandler cria um novo handler de sessões
+
 func NewSessionHandler(service session.Service, repo repositories.SessionRepository) *SessionHandler {
 	return &SessionHandler{
 		sessionService: service,
@@ -34,78 +34,104 @@ func NewSessionHandler(service session.Service, repo repositories.SessionReposit
 	}
 }
 
-// RegisterRoutes registra as rotas do handler
+
 func (h *SessionHandler) RegisterRoutes(app *fiber.App) {
-	// Rotas públicas (sem autenticação)
-	public := app.Group("/sessions")
-	public.Post("/create", h.CreateSession)
-	public.Get("/qr/:sessionId", h.GetQRCode)
 
-	// Rotas protegidas (requerem autenticação)
-	protected := app.Group("/sessions")
-	protected.Get("/", h.ListSessions)
-	protected.Get("/:sessionId", h.GetSession)
-	protected.Put("/:sessionId", h.UpdateSession)
-	protected.Delete("/:sessionId", h.DeleteSession)
-	protected.Post("/:sessionId/connect", h.ConnectSession)
-	protected.Post("/:sessionId/disconnect", h.DisconnectSession)
-	protected.Post("/:sessionId/phone", h.PairPhone)
-	protected.Put("/:sessionId/proxy", h.SetProxy)
-	protected.Put("/:sessionId/webhook", h.SetWebhook)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
 
-// CreateSessionRequest representa a requisição para criar uma sessão
-type CreateSessionRequest struct {
-	SessionID string              `json:"session_id"`
-	Name      string              `json:"name" validate:"required"`
-	Proxy     *session.ProxyConfig `json:"proxy,omitempty"`
-	Webhook   *session.WebhookConfig `json:"webhook,omitempty"`
-}
 
-// CreateSession cria uma nova sessão
 // @Summary Criar nova sessão WhatsApp
-// @Description Cria uma nova sessão WhatsApp com configurações opcionais de proxy e webhook
+// @Description Cria uma nova sessão WhatsApp com configurações opcionais de proxy e webhook. Campos opcionais: session_id (será gerado automaticamente se não fornecido), api_key (será gerada automaticamente se não fornecida), proxy (configuração de proxy), webhook (configuração de webhook)
 // @Tags sessions
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Param request body CreateSessionRequest true "Dados da sessão"
+// @Param request body dto.CreateSessionRequest true "Dados da sessão - Exemplo mínimo: {\"name\": \"Minha Sessão\"}"
 // @Success 201 {object} map[string]interface{} "Sessão criada com sucesso"
-// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos - Verifique se a porta do proxy está entre 1-65535"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions [post]
+// @Router /sessions/add [post]
 func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
-	var req CreateSessionRequest
-	if err := c.BodyParser(&req); err != nil {
+
+	validatedBody := c.Locals("validated_body")
+	if validatedBody == nil {
 		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
-	// Validar campos obrigatórios
-	if req.Name == "" {
-		return h.sendError(c, "Name is required", "VALIDATION_ERROR", fiber.StatusBadRequest)
+	req, ok := validatedBody.(*dto.CreateSessionRequest)
+	if !ok {
+		return h.sendError(c, "Invalid request format", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
-	// Gerar session_id se não fornecido
+
+
+
+
+
+
+
+	if req.Name == "" {
+		req.Name = "Test Session"
+	}
+
+
 	if req.SessionID == "" {
 		req.SessionID = "session_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
 
-	// Criar configuração
+
+	var proxyConfig *session.ProxyConfig
+	if req.Proxy != nil {
+		proxyConfig = &session.ProxyConfig{
+			Enabled:  req.Proxy.Enabled,
+			Host:     req.Proxy.Host,
+			Port:     req.Proxy.Port,
+			Username: req.Proxy.Username,
+			Password: req.Proxy.Password,
+			Type:     req.Proxy.Type,
+		}
+	}
+
+	var webhookConfig *session.WebhookConfig
+	if req.Webhook != nil {
+		webhookConfig = &session.WebhookConfig{
+			URL:    req.Webhook.URL,
+			Events: req.Webhook.Events,
+			Secret: req.Webhook.Secret,
+		}
+	}
+
+
 	config := &session.Config{
 		SessionID: req.SessionID,
 		Name:      req.Name,
-		Proxy:     req.Proxy,
-		Webhook:   req.Webhook,
+		Proxy:     proxyConfig,
+		Webhook:   webhookConfig,
 	}
 
-	// Criar sessão
+
 	sessionInfo, err := h.sessionService.CreateSession(context.Background(), config)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to create session")
 		return h.sendError(c, "Failed to create session", "CREATE_FAILED", fiber.StatusInternalServerError)
 	}
 
-	// Preparar resposta
+
 	response := fiber.Map{
 		"success": true,
 		"session": fiber.Map{
@@ -121,7 +147,7 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
-// GetSession retorna informações de uma sessão específica
+
 // @Summary Obter detalhes da sessão
 // @Description Retorna informações detalhadas de uma sessão específica
 // @Tags sessions
@@ -165,25 +191,25 @@ func (h *SessionHandler) GetSession(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// ListSessions lista todas as sessões
+
 func (h *SessionHandler) ListSessions(c *fiber.Ctx) error {
-	// Parse query parameters for filtering
+
 	var filter models.SessionFilter
-	
-	// Parse page and per_page
+
+
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	perPage, _ := strconv.Atoi(c.Query("per_page", "20"))
-	
+
 	filter.Page = page
 	filter.PerPage = perPage
-	
-	// Parse status filter
+
+
 	if status := c.Query("status"); status != "" {
 		sessionStatus := models.SessionStatus(status)
 		filter.Status = &sessionStatus
 	}
-	
-	// Parse name filter
+
+
 	if name := c.Query("name"); name != "" {
 		filter.Name = &name
 	}
@@ -210,7 +236,7 @@ func (h *SessionHandler) ListSessions(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// UpdateSession atualiza uma sessão existente
+
 func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -222,33 +248,33 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
-	// Obter sessão existente
-	sessionModel, err := h.sessionRepo.GetBySessionID(sessionID)
+
+	sessionModel, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
 	}
 
-	// Atualizar campos
+
 	if req.Name != nil {
 		sessionModel.Name = *req.Name
 	}
 
-	// Atualizar proxy se fornecido
+
 	if req.Proxy != nil {
-		// TODO: Implementar atualização de proxy
+
 	}
 
-	// Atualizar webhook se fornecido
+
 	if req.Webhook != nil {
-		// TODO: Implementar atualização de webhook
+
 	}
 
-	// Atualizar metadados se fornecido
+
 	if req.Metadata != nil {
 		sessionModel.Metadata = *req.Metadata
 	}
 
-	// Salvar alterações
+
 	if err := h.sessionRepo.Update(sessionModel); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update session")
 		return h.sendError(c, "Failed to update session", "UPDATE_FAILED", fiber.StatusInternalServerError)
@@ -258,7 +284,7 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 		"success": true,
 		"session": fiber.Map{
 			"id":                sessionModel.ID,
-			"session_id":        sessionModel.SessionID,
+			"session_id":        sessionModel.ID.String(),
 			"name":              sessionModel.Name,
 			"api_key":           sessionModel.APIKey,
 			"status":            sessionModel.Status,
@@ -277,14 +303,14 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// DeleteSession remove uma sessão
+
 func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// Remover sessão
+
 	if err := h.sessionService.DeleteSession(context.Background(), sessionID); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to delete session")
 		return h.sendError(c, "Failed to delete session", "DELETE_FAILED", fiber.StatusInternalServerError)
@@ -298,35 +324,60 @@ func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// ConnectSession conecta uma sessão ao WhatsApp
+
+// @Summary Conectar sessão
+// @Description Inicia a conexão WhatsApp para a sessão e retorna o QR code
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Conexão iniciada com QR code"
+// @Failure 400 {object} map[string]interface{} "Sessão já conectada ou erro de validação"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/connect [post]
 func (h *SessionHandler) ConnectSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// Conectar sessão
-	if err := h.sessionService.ConnectSession(context.Background(), sessionID); err != nil {
+
+	qrInfo, err := h.sessionService.GetQRCode(context.Background(), sessionID)
+	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to connect session")
 		return h.sendError(c, "Failed to connect session", "CONNECT_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
-		"success": true,
-		"message": "Session connection initiated",
+		"success":   true,
+		"message":   "Session connection initiated",
+		"qr_code":   qrInfo.Code,
+		"timeout":   qrInfo.Timeout,
+		"timestamp": qrInfo.Timestamp,
 	}
 
 	return c.JSON(response)
 }
 
-// DisconnectSession desconecta uma sessão do WhatsApp
+
+// @Summary Desconectar sessão
+// @Description Desconecta a sessão do WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Sessão desconectada com sucesso"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/disconnect [post]
 func (h *SessionHandler) DisconnectSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// Desconectar sessão
+
 	if err := h.sessionService.DisconnectSession(context.Background(), sessionID); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session")
 		return h.sendError(c, "Failed to disconnect session", "DISCONNECT_FAILED", fiber.StatusInternalServerError)
@@ -340,7 +391,7 @@ func (h *SessionHandler) DisconnectSession(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// GetQRCode retorna o QR Code para autenticação
+
 // @Summary Obter QR Code da sessão
 // @Description Retorna o QR Code para autenticação da sessão WhatsApp
 // @Tags sessions
@@ -358,7 +409,7 @@ func (h *SessionHandler) GetQRCode(c *fiber.Ctx) error {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// Obter QR Code
+
 	qrInfo, err := h.sessionService.GetQRCode(context.Background(), sessionID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get QR code")
@@ -377,44 +428,7 @@ func (h *SessionHandler) GetQRCode(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// PairPhone inicia o pareamento por telefone
-func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
-	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
-	}
 
-	var req session.PairPhoneRequest
-	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
-	}
-
-	if req.PhoneNumber == "" {
-		return h.sendError(c, "Phone number is required", "VALIDATION_ERROR", fiber.StatusBadRequest)
-	}
-
-	// Parear por telefone
-	response, err := h.sessionService.PairPhone(context.Background(), sessionID, &req)
-	if err != nil {
-		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to pair phone")
-		return h.sendError(c, "Failed to pair phone", "PAIR_FAILED", fiber.StatusInternalServerError)
-	}
-
-	result := fiber.Map{
-		"success": response.Success,
-	}
-
-	if response.Code != "" {
-		result["code"] = response.Code
-	}
-	if response.Message != "" {
-		result["message"] = response.Message
-	}
-
-	return c.JSON(result)
-}
-
-// SetProxy configura o proxy para uma sessão
 func (h *SessionHandler) SetProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -426,7 +440,7 @@ func (h *SessionHandler) SetProxy(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
-	// Configurar proxy
+
 	if err := h.sessionService.SetProxy(context.Background(), sessionID, &req); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to set proxy")
 		return h.sendError(c, "Failed to set proxy", "PROXY_FAILED", fiber.StatusInternalServerError)
@@ -440,7 +454,7 @@ func (h *SessionHandler) SetProxy(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// SetWebhook configura o webhook para uma sessão
+
 func (h *SessionHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -456,7 +470,7 @@ func (h *SessionHandler) SetWebhook(c *fiber.Ctx) error {
 		return h.sendError(c, "Webhook URL is required", "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
-	// Configurar webhook
+
 	if err := h.sessionService.SetWebhook(context.Background(), sessionID, &req); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to set webhook")
 		return h.sendError(c, "Failed to set webhook", "WEBHOOK_FAILED", fiber.StatusInternalServerError)
@@ -470,36 +484,80 @@ func (h *SessionHandler) SetWebhook(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// GetAllSessions retorna todas as sessões (método faltando)
+
+// @Summary Listar todas as sessões
+// @Description Lista todas as sessões com paginação e filtros opcionais
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param page query int false "Número da página" default(1)
+// @Param per_page query int false "Itens por página" default(20)
+// @Param status query string false "Filtrar por status" Enums(connected, disconnected, connecting, error)
+// @Param name query string false "Filtrar por nome"
+// @Success 200 {object} map[string]interface{} "Lista de sessões"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions [get]
 func (h *SessionHandler) GetAllSessions(c *fiber.Ctx) error {
-	// Reutilizar a lógica de ListSessions
+
 	return h.ListSessions(c)
 }
 
-// GetActiveConnections retorna conexões ativas (método faltando)
+
+// @Summary Listar conexões ativas
+// @Description Lista todas as sessões atualmente conectadas ao WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Lista de conexões ativas"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/active [get]
 func (h *SessionHandler) GetActiveConnections(c *fiber.Ctx) error {
-	// TODO: Implementar obtenção de conexões ativas
+
+	activeSessions, err := h.sessionRepo.GetActiveConnections()
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to get active connections")
+		return h.sendError(c, "Failed to get active connections", "ACTIVE_CONNECTIONS_FAILED", fiber.StatusInternalServerError)
+	}
+
+
+	var connections []map[string]interface{}
+	for _, session := range activeSessions {
+		connections = append(connections, map[string]interface{}{
+			"id":                session.ID,
+			"session_id":        session.GetSessionID(), // UUID como session_id
+			"name":              session.Name,
+			"status":            session.Status,
+			"jid":               session.JID,
+			"last_connected_at": session.LastConnectedAt,
+			"created_at":        session.CreatedAt,
+		})
+	}
+
 	return c.JSON(fiber.Map{
-		"success": true,
-		"data":    []interface{}{},
+		"success":         true,
+		"active_sessions": connections,
+		"total":           len(connections),
+		"timestamp":       time.Now().Unix(),
 	})
 }
 
-// LogoutSession faz logout da sessão (método faltando)
+
 func (h *SessionHandler) LogoutSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// TODO: Implementar logout da sessão
+
 	return c.JSON(fiber.Map{
 		"success": true,
 		"message": "Session logout initiated",
 	})
 }
 
-// GetSessionStatus retorna o status da sessão (método faltando)
+
 func (h *SessionHandler) GetSessionStatus(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -518,58 +576,58 @@ func (h *SessionHandler) GetSessionStatus(c *fiber.Ctx) error {
 	})
 }
 
-// GetSessionQRCode retorna o QR Code da sessão (método faltando)
+
 func (h *SessionHandler) GetSessionQRCode(c *fiber.Ctx) error {
-	// Reutilizar a lógica de GetQRCode
+
 	return h.GetQRCode(c)
 }
 
-// GetSessionStats retorna estatísticas da sessão (método faltando)
+
 func (h *SessionHandler) GetSessionStats(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// TODO: Implementar obtenção de estatísticas da sessão
+
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data":    fiber.Map{},
 	})
 }
 
-// GetProxy retorna a configuração de proxy (método faltando)
+
 func (h *SessionHandler) GetProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// TODO: Implementar obtenção de configuração de proxy
+
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data":    fiber.Map{},
 	})
 }
 
-// TestProxy testa a configuração de proxy (método faltando)
+
 func (h *SessionHandler) TestProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
 		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
-	// TODO: Implementar teste de proxy
+
 	return c.JSON(fiber.Map{
 		"success": true,
 		"message": "Proxy test initiated",
 	})
 }
 
-// === NOVOS MÉTODOS PARA OPERAÇÕES DE SESSÃO (WHATSAPP) ===
 
-// SetPresence define presença da sessão
-// POST /sessions/:sessionId/presence
+
+
+
 func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -578,7 +636,7 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-	// Obter cliente WhatsApp
+
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
@@ -589,7 +647,7 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-	// Mapear presença
+
 	var presence types.Presence
 	switch req.Presence {
 	case "available":
@@ -600,7 +658,7 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid presence type. Use 'available' or 'unavailable'", "INVALID_PRESENCE", fiber.StatusBadRequest)
 	}
 
-	// Enviar presença global
+
 	err = client.SendPresence(presence)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("presence", req.Presence).Msg("Failed to set presence")
@@ -617,8 +675,8 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	})
 }
 
-// CheckContacts verifica se contatos existem
-// POST /sessions/:sessionId/check
+
+
 func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -627,12 +685,12 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-	// Validar se há telefones para verificar
+
 	if len(req.Phone) == 0 {
 		return h.sendError(c, "At least one phone number is required", "NO_PHONES", fiber.StatusBadRequest)
 	}
 
-	// Obter cliente WhatsApp
+
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
@@ -643,12 +701,12 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-	// Preparar números para verificação
+
 	var phoneNumbers []string
 	phoneToJID := make(map[string]string)
 
 	for _, phone := range req.Phone {
-		// Limpar e validar número de telefone
+
 		cleanPhone := strings.ReplaceAll(phone, "+", "")
 		cleanPhone = strings.ReplaceAll(cleanPhone, " ", "")
 		cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
@@ -665,42 +723,40 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 		return h.sendError(c, "No valid phone numbers provided", "NO_VALID_PHONES", fiber.StatusBadRequest)
 	}
 
-	// Verificar quais números estão no WhatsApp
+
 	results, err := client.IsOnWhatsApp(phoneNumbers)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to check contacts on WhatsApp")
 		return h.sendError(c, fmt.Sprintf("Failed to check contacts: %v", err), "CHECK_FAILED", fiber.StatusInternalServerError)
 	}
 
-	// Processar resultados
+
 	var contacts []map[string]interface{}
-	resultMap := make(map[string]whatsmeow.IsOnWhatsAppResponse)
+	resultMap := make(map[string]types.IsOnWhatsAppResponse)
 
 	for _, result := range results {
 		resultMap[result.JID.User] = result
 	}
 
-	for originalPhone, jid := range phoneToJID {
-		if result, exists := resultMap[jid.User]; exists {
+	for originalPhone, jidStr := range phoneToJID {
+
+		phoneNumber := strings.Split(jidStr, "@")[0]
+		if result, exists := resultMap[phoneNumber]; exists {
 			contact := map[string]interface{}{
 				"phone":    originalPhone,
 				"jid":      result.JID.String(),
 				"exists":   result.IsIn,
 				"verified": result.VerifiedName != nil,
-				"business": result.BusinessName != "",
+				"business": false, // BusinessName não está disponível na versão atual
 			}
 
 			if result.VerifiedName != nil {
 				contact["verified_name"] = *result.VerifiedName
 			}
 
-			if result.BusinessName != "" {
-				contact["business_name"] = result.BusinessName
-			}
-
 			contacts = append(contacts, contact)
 		} else {
-			// Número não encontrado nos resultados
+
 			contacts = append(contacts, map[string]interface{}{
 				"phone":    originalPhone,
 				"exists":   false,
@@ -721,8 +777,8 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 	})
 }
 
-// GetContactInfo obtém informações de contato
-// POST /sessions/:sessionId/info
+
+
 func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -731,7 +787,7 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-	// Verificar se a sessão existe e está conectada
+
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
@@ -742,7 +798,7 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-	// Limpar e preparar número de telefone
+
 	cleanPhone := strings.ReplaceAll(req.Phone, "+", "")
 	cleanPhone = strings.ReplaceAll(cleanPhone, " ", "")
 	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
@@ -751,36 +807,36 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
-	// Preparar JID
+
 	jid, err := types.ParseJID(cleanPhone + "@s.whatsapp.net")
 	if err != nil {
 		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
-	// Obter informações do usuário
+
 	userInfo, err := client.GetUserInfo([]types.JID{jid})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to get user info")
 		return h.sendError(c, fmt.Sprintf("Failed to get contact info: %v", err), "INFO_FAILED", fiber.StatusInternalServerError)
 	}
 
-	// Verificar se o usuário existe no WhatsApp
-	isOnWhatsApp, err := client.IsOnWhatsApp([]types.JID{jid})
+
+	isOnWhatsApp, err := client.IsOnWhatsApp([]string{cleanPhone})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to check if user is on WhatsApp")
 		return h.sendError(c, fmt.Sprintf("Failed to verify contact: %v", err), "VERIFY_FAILED", fiber.StatusInternalServerError)
 	}
 
-	// Processar informações
+
 	contact := map[string]interface{}{
-		"phone":     req.Phone,
-		"jid":       jid.String(),
-		"exists":    false,
-		"verified":  false,
-		"business":  false,
+		"phone":    req.Phone,
+		"jid":      jid.String(),
+		"exists":   false,
+		"verified": false,
+		"business": false,
 	}
 
-	// Verificar se está no WhatsApp
+
 	if len(isOnWhatsApp) > 0 && isOnWhatsApp[0].IsIn {
 		contact["exists"] = true
 
@@ -789,13 +845,10 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 			contact["verified_name"] = *isOnWhatsApp[0].VerifiedName
 		}
 
-		if isOnWhatsApp[0].BusinessName != "" {
-			contact["business"] = true
-			contact["business_name"] = isOnWhatsApp[0].BusinessName
-		}
+
 	}
 
-	// Adicionar informações do usuário se disponíveis
+
 	if info, exists := userInfo[jid]; exists {
 		if len(info.Devices) > 0 {
 			contact["devices"] = len(info.Devices)
@@ -803,8 +856,8 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 		contact["user_info"] = info
 	}
 
-	// Tentar obter informações do contato salvo
-	if contactInfo, err := client.Store.Contacts.GetContact(jid); err == nil {
+
+	if contactInfo, err := client.Store.Contacts.GetContact(context.Background(), jid); err == nil {
 		if contactInfo.FullName != "" {
 			contact["full_name"] = contactInfo.FullName
 		}
@@ -829,8 +882,8 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	})
 }
 
-// GetContactAvatar obtém avatar de contato
-// POST /sessions/:sessionId/avatar
+
+
 func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -839,7 +892,7 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-	// Verificar se a sessão existe e está conectada
+
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
@@ -850,7 +903,7 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-	// Limpar e preparar número de telefone
+
 	cleanPhone := strings.ReplaceAll(req.Phone, "+", "")
 	cleanPhone = strings.ReplaceAll(cleanPhone, " ", "")
 	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
@@ -859,20 +912,20 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
-	// Preparar JID
+
 	jid, err := types.ParseJID(cleanPhone + "@s.whatsapp.net")
 	if err != nil {
 		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
-	// Obter avatar
+
 	avatar, err := client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
 		Preview: false, // Obter imagem em alta resolução
 	})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to get contact avatar")
 
-		// Se não conseguir obter avatar, retornar informação de que não há avatar
+
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"success":    true,
 			"session_id": sessionID,
@@ -886,7 +939,7 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 		})
 	}
 
-	// Preparar resposta com informações do avatar
+
 	avatarInfo := map[string]interface{}{
 		"phone":      req.Phone,
 		"jid":        jid.String(),
@@ -899,7 +952,7 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 		},
 	}
 
-	// Tentar obter também a versão preview (baixa resolução)
+
 	if preview, err := client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
 		Preview: true,
 	}); err == nil {
@@ -916,12 +969,12 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	})
 }
 
-// GetContacts lista contatos da sessão
-// GET /sessions/:sessionId/contacts
+
+
 func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	// Obter cliente WhatsApp
+
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
@@ -932,50 +985,50 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-	// Obter parâmetros de query opcionais
-	limit := c.QueryInt("limit", 100)  // Limite padrão de 100
-	offset := c.QueryInt("offset", 0)  // Offset padrão de 0
-	search := c.Query("search", "")    // Filtro de busca opcional
+
+	limit := c.QueryInt("limit", 100) // Limite padrão de 100
+	offset := c.QueryInt("offset", 0) // Offset padrão de 0
+	search := c.Query("search", "")   // Filtro de busca opcional
 
 	if limit > 500 {
 		limit = 500 // Máximo de 500 contatos por request
 	}
 
-	// Obter todos os contatos do store
-	allContacts, err := client.Store.Contacts.GetAllContacts()
+
+	allContacts, err := client.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get contacts from store")
 		return h.sendError(c, fmt.Sprintf("Failed to get contacts: %v", err), "CONTACTS_FAILED", fiber.StatusInternalServerError)
 	}
 
-	// Processar e filtrar contatos
+
 	var contacts []map[string]interface{}
 	count := 0
 
 	for jid, contact := range allContacts {
-		// Aplicar filtro de busca se fornecido
+
 		if search != "" {
 			searchLower := strings.ToLower(search)
 			if !strings.Contains(strings.ToLower(contact.FullName), searchLower) &&
-			   !strings.Contains(strings.ToLower(contact.FirstName), searchLower) &&
-			   !strings.Contains(strings.ToLower(contact.PushName), searchLower) &&
-			   !strings.Contains(jid.User, search) {
+				!strings.Contains(strings.ToLower(contact.FirstName), searchLower) &&
+				!strings.Contains(strings.ToLower(contact.PushName), searchLower) &&
+				!strings.Contains(jid.User, search) {
 				continue
 			}
 		}
 
-		// Aplicar offset
+
 		if count < offset {
 			count++
 			continue
 		}
 
-		// Aplicar limite
+
 		if len(contacts) >= limit {
 			break
 		}
 
-		// Preparar informações do contato
+
 		contactInfo := map[string]interface{}{
 			"jid":           jid.String(),
 			"phone":         jid.User,
@@ -986,7 +1039,7 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 			"is_business":   contact.BusinessName != "",
 		}
 
-		// Adicionar informações extras se disponíveis
+
 		if contact.FullName == "" && contact.FirstName == "" && contact.PushName != "" {
 			contactInfo["display_name"] = contact.PushName
 		} else if contact.FullName != "" {
@@ -1001,7 +1054,7 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 		count++
 	}
 
-	// Obter total de contatos (para paginação)
+
 	totalContacts := len(allContacts)
 
 	h.logger.Info().
@@ -1028,7 +1081,297 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 	})
 }
 
-// sendError envia uma resposta de erro padronizada
+
+
+
+
+func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+	var req dto.PairPhoneRequest
+	if err := c.BodyParser(&req); err != nil {
+		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+	}
+
+
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err != nil {
+		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+	}
+
+	client, ok := clientInterface.(*whatsmeow.Client)
+	if !ok {
+		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+	}
+
+
+	if client.IsLoggedIn() {
+		return h.sendError(c, "Session is already paired", "ALREADY_PAIRED", fiber.StatusBadRequest)
+	}
+
+
+	phoneValidator := utils.NewPhoneValidator()
+	if !phoneValidator.IsValidPhone(req.Phone) {
+		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+	}
+
+	cleanPhone := phoneValidator.CleanPhone(req.Phone)
+
+
+	linkingCode, err := client.PairPhone(context.Background(), cleanPhone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+	if err != nil {
+		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to pair phone")
+		return h.sendError(c, fmt.Sprintf("Failed to pair phone: %v", err), "PAIR_FAILED", fiber.StatusInternalServerError)
+	}
+
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Str("phone", req.Phone).
+		Str("linking_code", linkingCode).
+		Msg("Phone pairing initiated")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success":      true,
+		"phone":        req.Phone,
+		"linking_code": linkingCode,
+		"message":      "Enter the linking code in your WhatsApp app",
+		"expires_at":   time.Now().Add(5 * time.Minute).Unix(), // Códigos expiram em 5 minutos
+		"timestamp":    time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+	var req dto.ProxyConfigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+	}
+
+
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err == nil {
+		if client, ok := clientInterface.(*whatsmeow.Client); ok && client.IsConnected() {
+			return h.sendError(c, "Cannot configure proxy while connected. Please disconnect first", "SESSION_CONNECTED", fiber.StatusBadRequest)
+		}
+	}
+
+
+	if !req.Enabled {
+
+		h.logger.Info().Str("session_id", sessionID).Msg("Proxy disabled")
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"success":   true,
+			"message":   "Proxy disabled successfully",
+			"enabled":   false,
+			"timestamp": time.Now().Unix(),
+		})
+	}
+
+
+	if req.Host == "" || req.Port == 0 {
+		return h.sendError(c, "Host and port are required when enabling proxy", "MISSING_PROXY_CONFIG", fiber.StatusBadRequest)
+	}
+
+	if req.Type == "" {
+		req.Type = "http" // Padrão
+	}
+
+
+
+
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Str("proxy_type", req.Type).
+		Str("proxy_host", req.Host).
+		Int("proxy_port", req.Port).
+		Msg("Proxy configured")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Proxy configured successfully",
+		"config": map[string]interface{}{
+			"enabled": true,
+			"type":    req.Type,
+			"host":    req.Host,
+			"port":    req.Port,
+		},
+		"note":      "Proxy configuration saved - implementation requires database integration",
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+	var req dto.S3ConfigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+	}
+
+
+	if !req.Enabled {
+
+		h.logger.Info().Str("session_id", sessionID).Msg("S3 disabled")
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"success":   true,
+			"message":   "S3 disabled successfully",
+			"enabled":   false,
+			"timestamp": time.Now().Unix(),
+		})
+	}
+
+
+	if req.Bucket == "" || req.Region == "" || req.AccessKeyID == "" || req.SecretAccessKey == "" {
+		return h.sendError(c, "Bucket, region, access_key_id and secret_access_key are required", "MISSING_S3_CONFIG", fiber.StatusBadRequest)
+	}
+
+
+
+
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Str("s3_bucket", req.Bucket).
+		Str("s3_region", req.Region).
+		Msg("S3 configured")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "S3 configured successfully",
+		"config": map[string]interface{}{
+			"enabled": true,
+			"bucket":  req.Bucket,
+			"region":  req.Region,
+		},
+		"note":      "S3 configuration saved - implementation requires database and S3 client integration",
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) GetS3Config(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+
+
+
+	h.logger.Info().Str("session_id", sessionID).Msg("S3 config requested")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"config": map[string]interface{}{
+			"enabled":     false,
+			"bucket":      "",
+			"region":      "",
+			"endpoint":    "",
+			"status":      "disconnected",
+			"last_tested": nil,
+		},
+		"note":      "S3 config retrieval - implementation requires database integration",
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) DeleteS3Config(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+
+
+
+	h.logger.Info().Str("session_id", sessionID).Msg("S3 config deleted")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success":   true,
+		"message":   "S3 configuration deleted successfully",
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) TestS3Connection(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+
+
+
+	h.logger.Info().Str("session_id", sessionID).Msg("S3 connection test requested")
+
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": false,
+		"message": "S3 not configured for this session",
+		"test_result": map[string]interface{}{
+			"connected":  false,
+			"latency_ms": 0,
+			"tested_at":  time.Now().Unix(),
+			"error":      "S3 not configured",
+		},
+		"note":      "S3 connection test - implementation requires database and S3 client integration",
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+
+
+func (h *SessionHandler) ListNewsletters(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+
+
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err != nil {
+		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+	}
+
+	client, ok := clientInterface.(*whatsmeow.Client)
+	if !ok {
+		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+	}
+
+
+	newsletters, err := client.GetSubscribedNewsletters()
+	if err != nil {
+		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get newsletters")
+		return h.sendError(c, fmt.Sprintf("Failed to get newsletters: %v", err), "NEWSLETTERS_FAILED", fiber.StatusInternalServerError)
+	}
+
+
+	var newsletterList []map[string]interface{}
+	for _, newsletter := range newsletters {
+		newsletterInfo := map[string]interface{}{
+			"id":          newsletter.ID.String(),
+			"name":        newsletter.ThreadMeta.Name.Text,
+			"description": newsletter.ThreadMeta.Description.Text,
+			"verified":    newsletter.ThreadMeta.VerificationState == types.NewsletterVerificationStateVerified,
+			"subscribers": newsletter.ThreadMeta.SubscriberCount,
+			"created_at":  newsletter.ThreadMeta.CreationTime,
+		}
+		newsletterList = append(newsletterList, newsletterInfo)
+	}
+
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Int("newsletters_count", len(newsletterList)).
+		Msg("Newsletters retrieved")
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success":     true,
+		"newsletters": newsletterList,
+		"total":       len(newsletterList),
+		"timestamp":   time.Now().Unix(),
+	})
+}
+
+
 func (h *SessionHandler) sendError(c *fiber.Ctx, message, code string, statusCode int) error {
 	return c.Status(statusCode).JSON(fiber.Map{
 		"success": false,

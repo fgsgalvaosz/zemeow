@@ -13,7 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 )
 
-// AuthContext representa o contexto de autenticação
+
 type AuthContext struct {
 	APIKey        string
 	IsGlobalKey   bool
@@ -21,27 +21,27 @@ type AuthContext struct {
 	HasGlobalAccess bool
 }
 
-// SessionInfo representa as informações de sessão no contexto
+
 type SessionInfo struct {
 	ID        string `json:"id"`
 	SessionID string `json:"session_id"`
 	Name      string `json:"name"`
 	JID       string `json:"jid"`
 	Webhook   string `json:"webhook"`
-	// Token     string `json:"token"`  // Removendo a referência ao token
+
 	Proxy     string `json:"proxy"`
 	Events    string `json:"events"`
 	QRCode    string `json:"qrcode"`
 }
 
-// AuthMiddleware gerencia autenticação e autorização
+
 type AuthMiddleware struct {
 	adminAPIKey    string
 	sessionRepo    repositories.SessionRepository
 	logger         logger.Logger
 }
 
-// NewAuthMiddleware cria um novo middleware de autenticação
+
 func NewAuthMiddleware(adminAPIKey string, sessionRepo repositories.SessionRepository) *AuthMiddleware {
 	return &AuthMiddleware{
 		adminAPIKey: adminAPIKey,
@@ -50,7 +50,7 @@ func NewAuthMiddleware(adminAPIKey string, sessionRepo repositories.SessionRepos
 	}
 }
 
-// GetAuthContext extrai o contexto de autenticação do Fiber context
+
 func GetAuthContext(c *fiber.Ctx) *AuthContext {
 	if ctx := c.Locals("auth"); ctx != nil {
 		return ctx.(*AuthContext)
@@ -58,7 +58,7 @@ func GetAuthContext(c *fiber.Ctx) *AuthContext {
 	return nil
 }
 
-// GetSessionInfo extrai as informações de sessão do contexto
+
 func GetSessionInfo(c *fiber.Ctx) *SessionInfo {
 	if info := c.Locals("sessioninfo"); info != nil {
 		return info.(*SessionInfo)
@@ -66,35 +66,35 @@ func GetSessionInfo(c *fiber.Ctx) *SessionInfo {
 	return nil
 }
 
-// GetSessionID extrai o sessionID da URL ou do contexto
+
 func GetSessionID(c *fiber.Ctx) string {
-	// Primeiro tenta pegar da URL
+
 	if sessionID := c.Params("sessionId"); sessionID != "" {
 		return sessionID
 	}
-	// Depois tenta pegar do contexto de sessão
+
 	if sessionInfo := GetSessionInfo(c); sessionInfo != nil {
 		return sessionInfo.SessionID
 	}
 	return ""
 }
 
-// extractAPIKey extrai a API key dos headers
+
 func (am *AuthMiddleware) extractAPIKey(c *fiber.Ctx) string {
-	// Primeiro tentar header apikey (método preferido)
+
 	if apiKey := c.Get("apikey"); apiKey != "" {
 		return apiKey
 	}
 	
-	// Segundo tentar X-API-Key header
+
 	if apiKey := c.Get("X-API-Key"); apiKey != "" {
 		return apiKey
 	}
 
-	// Terceiro tentar Authorization header
+
 	token := c.Get("Authorization")
 	if token != "" {
-		// Remover prefixo "Bearer " se presente
+
 		if strings.HasPrefix(token, "Bearer ") {
 			return strings.TrimPrefix(token, "Bearer ")
 		}
@@ -104,10 +104,10 @@ func (am *AuthMiddleware) extractAPIKey(c *fiber.Ctx) string {
 	return ""
 }
 
-// RequireAPIKey middleware que requer autenticação válida (Global ou Session API Key)
+
 func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Extrair API key
+
 		apiKey := am.extractAPIKey(c)
 		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -116,9 +116,9 @@ func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 			})
 		}
 
-		// Verificar se é Global API Key
+
 		if apiKey == am.adminAPIKey {
-			// Criar contexto global
+
 			authCtx := &AuthContext{
 				APIKey:          apiKey,
 				IsGlobalKey:     true,
@@ -129,7 +129,7 @@ func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 			return c.Next()
 		}
 
-		// Verificar se é Session API Key
+
 		session, err := am.sessionRepo.GetByAPIKey(apiKey)
 		if err != nil {
 			am.logger.Warn().Err(err).Str("api_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Session API key validation failed")
@@ -139,26 +139,31 @@ func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 			})
 		}
 
-		// Criar contexto de sessão
+
 		authCtx := &AuthContext{
 			APIKey:          apiKey,
 			IsGlobalKey:     false,
-			SessionID:       session.SessionID,
+			SessionID:       session.GetSessionID(), // UUID como SessionID
 			HasGlobalAccess: false,
 		}
 		c.Locals("auth", authCtx)
 		c.Locals("session", session)
 
-		am.logger.Info().Str("type", "session").Str("session_id", session.SessionID).Msg("Session authentication successful")
+		am.logger.Info().Str("type", "session").Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Session authentication successful")
 		return c.Next()
 	}
 }
 
-// RequireGlobalAPIKey middleware que requer privilégios globais
+
 func (am *AuthMiddleware) RequireGlobalAPIKey() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Extrair API key
+
+		am.logger.Info().Interface("headers", c.GetReqHeaders()).Msg("DEBUG: All request headers")
+
+
 		apiKey := am.extractAPIKey(c)
+		am.logger.Info().Str("extracted_api_key", apiKey).Str("expected_admin_key", am.adminAPIKey).Msg("DEBUG: API key comparison")
+
 		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error":   "MISSING_API_KEY",
@@ -166,16 +171,16 @@ func (am *AuthMiddleware) RequireGlobalAPIKey() fiber.Handler {
 			})
 		}
 
-		// Validar Global API Key
+
 		if apiKey != am.adminAPIKey {
-			am.logger.Warn().Str("provided_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Global access denied - invalid API key")
+			am.logger.Warn().Str("provided_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Str("expected_key_prefix", am.adminAPIKey[:min(len(am.adminAPIKey), 8)]+"...").Msg("Global access denied - invalid API key")
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error":   "GLOBAL_ACCESS_REQUIRED",
 				"message": "Global access required - invalid Global API key",
 			})
 		}
 
-		// Configurar contexto global
+
 		c.Locals("auth", &AuthContext{
 			APIKey:          apiKey,
 			IsGlobalKey:     true,
@@ -187,10 +192,10 @@ func (am *AuthMiddleware) RequireGlobalAPIKey() fiber.Handler {
 	}
 }
 
-// RequireSessionAccess middleware que verifica acesso à sessão específica
+
 func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Primeiro verificar se está autenticado
+
 		auth := GetAuthContext(c)
 		if auth == nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -199,12 +204,12 @@ func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 			})
 		}
 
-		// Global key tem acesso a todas as sessões
+
 		if auth.IsGlobalKey {
 			return c.Next()
 		}
 
-		// Verificar se o sessionID da URL corresponde à sessão autenticada
+
 		urlSessionID := c.Params("sessionId")
 		if urlSessionID == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -228,21 +233,21 @@ func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 	}
 }
 
-// SessionInfoMiddleware middleware que adiciona informações da sessão ao contexto
+
 func (am *AuthMiddleware) SessionInfoMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Verificar se há contexto de autenticação
+
 		auth := GetAuthContext(c)
 		if auth == nil {
 			return c.Next()
 		}
 
-		// Se for global key, não há sessão específica
+
 		if auth.IsGlobalKey {
 			return c.Next()
 		}
 
-		// Obter sessão do contexto
+
 		sessionInterface := c.Locals("session")
 		if sessionInterface == nil {
 			return c.Next()
@@ -253,14 +258,14 @@ func (am *AuthMiddleware) SessionInfoMiddleware() fiber.Handler {
 			return c.Next()
 		}
 
-		// Criar SessionInfo
+
 		info := &SessionInfo{
 			ID:        session.ID.String(),
-			SessionID: session.SessionID,
+			SessionID: session.GetSessionID(), // UUID como SessionID
 			Name:      session.Name,
 		}
 
-		// Preencher campos opcionais
+
 		if session.JID != nil {
 			info.JID = *session.JID
 		}
@@ -269,9 +274,9 @@ func (am *AuthMiddleware) SessionInfoMiddleware() fiber.Handler {
 			info.Webhook = *session.WebhookURL
 		}
 
-		// if session.Token != "" {  // Removendo a referência ao token
-		// 	info.Token = session.Token
-		// }
+
+
+
 
 		if session.ProxyHost != nil && session.ProxyPort != nil {
 			info.Proxy = fmt.Sprintf("%s:%d", *session.ProxyHost, *session.ProxyPort)
@@ -281,18 +286,18 @@ func (am *AuthMiddleware) SessionInfoMiddleware() fiber.Handler {
 			info.Events = strings.Join(session.WebhookEvents, ",")
 		}
 
-		// Adicionar ao contexto
+
 		c.Locals("sessioninfo", info)
 		return c.Next()
 	}
 }
 
-// CORS retorna o middleware CORS
+
 func (am *AuthMiddleware) CORS() fiber.Handler {
 	return am.CORSMiddleware()
 }
 
-// CORSMiddleware configura CORS
+
 func (am *AuthMiddleware) CORSMiddleware() fiber.Handler {
 	return cors.New(cors.Config{
 		AllowOrigins: "*",
@@ -301,13 +306,13 @@ func (am *AuthMiddleware) CORSMiddleware() fiber.Handler {
 	})
 }
 
-// RateLimiterMiddleware limita requisições
+
 func (am *AuthMiddleware) RateLimiterMiddleware() fiber.Handler {
 	return limiter.New(limiter.Config{
 		Max:        60, // 60 requisições
 		Expiration: 1 * time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			// Usar IP + API Key como chave
+
 			ip := c.IP()
 			apiKey := am.extractAPIKey(c)
 			if apiKey != "" {
@@ -324,15 +329,15 @@ func (am *AuthMiddleware) RateLimiterMiddleware() fiber.Handler {
 	})
 }
 
-// RequestLogger retorna o middleware de logger de requisições
+
 func (am *AuthMiddleware) RequestLogger() fiber.Handler {
-	// TODO: Implementar logger de requisições
+
 	return func(c *fiber.Ctx) error {
 		return c.Next()
 	}
 }
 
-// Helper function para min
+
 func min(a, b int) int {
 	if a < b {
 		return a
