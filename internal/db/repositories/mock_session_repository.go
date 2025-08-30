@@ -40,7 +40,7 @@ func (r *MockSessionRepository) Create(session *models.Session) error {
 }
 
 // GetByID obtém uma sessão por ID
-func (r *MockSessionRepository) GetByID(id uint) (*models.Session, error) {
+func (r *MockSessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -66,16 +66,22 @@ func (r *MockSessionRepository) GetBySessionID(sessionID string) (*models.Sessio
 }
 
 // GetAll obtém todas as sessões
-func (r *MockSessionRepository) GetAll() ([]*models.Session, error) {
+func (r *MockSessionRepository) GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	sessions := make([]*models.Session, 0, len(r.sessions))
+	sessions := make([]models.Session, 0, len(r.sessions))
 	for _, session := range r.sessions {
-		sessions = append(sessions, session)
+		sessions = append(sessions, *session)
 	}
 
-	return sessions, nil
+	return &models.SessionListResponse{
+		Sessions: sessions,
+		Total: len(sessions),
+		Page: 1,
+		PerPage: len(sessions),
+		TotalPages: 1,
+	}, nil
 }
 
 // Update atualiza uma sessão
@@ -93,7 +99,22 @@ func (r *MockSessionRepository) Update(session *models.Session) error {
 }
 
 // Delete remove uma sessão
-func (r *MockSessionRepository) Delete(sessionID string) error {
+func (r *MockSessionRepository) Delete(id uuid.UUID) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for sessionID, session := range r.sessions {
+		if session.ID == id {
+			delete(r.sessions, sessionID)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("session not found")
+}
+
+// DeleteBySessionID remove uma sessão por SessionID
+func (r *MockSessionRepository) DeleteBySessionID(sessionID string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 

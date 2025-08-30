@@ -242,24 +242,103 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) er
 
 // ConnectSession implementa Service.ConnectSession
 func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) error {
+	s.logger.Info().Str("session_id", sessionID).Msg("Connecting session to WhatsApp")
+
+	// Verificar se sessão existe
+	if exists, _ := s.repository.Exists(sessionID); !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Conectar via manager (casting para interface esperada)
+	if manager, ok := s.manager.(interface{ ConnectSession(string) error }); ok {
+		if err := manager.ConnectSession(sessionID); err != nil {
+			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to connect session")
+			return fmt.Errorf("failed to connect session: %w", err)
+		}
+	} else {
+		s.logger.Warn().Msg("WhatsApp manager not available for connection")
+		return fmt.Errorf("WhatsApp manager not available")
+	}
+
+	s.logger.Info().Str("session_id", sessionID).Msg("Session connection initiated successfully")
 	return nil
 }
 
 // DisconnectSession implementa Service.DisconnectSession
 func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string) error {
+	s.logger.Info().Str("session_id", sessionID).Msg("Disconnecting session from WhatsApp")
+
+	// Verificar se sessão existe
+	if exists, _ := s.repository.Exists(sessionID); !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Desconectar via manager
+	if manager, ok := s.manager.(interface{ DisconnectSession(string) error }); ok {
+		if err := manager.DisconnectSession(sessionID); err != nil {
+			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session")
+			return fmt.Errorf("failed to disconnect session: %w", err)
+		}
+	} else {
+		s.logger.Warn().Msg("WhatsApp manager not available for disconnection")
+		return fmt.Errorf("WhatsApp manager not available")
+	}
+
+	s.logger.Info().Str("session_id", sessionID).Msg("Session disconnected successfully")
 	return nil
 }
 
 // GetSessionStatus implementa Service.GetSessionStatus
 func (s *SessionService) GetSessionStatus(ctx context.Context, sessionID string) (Status, error) {
-	return StatusDisconnected, nil
+	s.logger.Debug().Str("session_id", sessionID).Msg("Getting session status")
+
+	// Buscar sessão no repositório para obter status persistido
+	session, err := s.repository.GetBySessionID(sessionID)
+	if err != nil {
+		s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Session not found")
+		return StatusDisconnected, fmt.Errorf("session not found: %w", err)
+	}
+
+	// Verificar status em tempo real via manager se disponível
+	if manager, ok := s.manager.(interface{ IsSessionActive(string) bool }); ok {
+		if manager.IsSessionActive(sessionID) {
+			return StatusConnected, nil
+		}
+	}
+
+	// Retornar status do banco se manager não estiver disponível
+	return Status(session.Status), nil
 }
 
 // GetQRCode implementa Service.GetQRCode
 func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCodeInfo, error) {
+	s.logger.Info().Str("session_id", sessionID).Msg("Getting QR code for session")
+
+	// Verificar se sessão existe
+	if exists, _ := s.repository.Exists(sessionID); !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Obter QR Code via manager se disponível
+	if manager, ok := s.manager.(interface{ GetSessionQRCode(string) (interface{}, error) }); ok {
+		qrData, err := manager.GetSessionQRCode(sessionID)
+		if err != nil {
+			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get QR code")
+			return nil, fmt.Errorf("failed to get QR code: %w", err)
+		}
+
+		// Converter para QRCodeInfo (implementação simplificada)
+		return &QRCodeInfo{
+			Code:      "qr_initiated", // O QR real será enviado via webhook
+			Timeout:   60,
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Fallback se manager não estiver disponível
 	return &QRCodeInfo{
-		Code:      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
-		Timeout:   300,
+		Code:      "qr_unavailable",
+		Timeout:   60,
 		Timestamp: time.Now(),
 	}, nil
 }
