@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -12,41 +13,42 @@ import (
 type Status string
 
 const (
-	StatusDisconnected Status = "disconnected"
-	StatusConnecting   Status = "connecting"
-	StatusConnected    Status = "connected"
+	StatusDisconnected  Status = "disconnected"
+	StatusConnecting    Status = "connecting"
+	StatusConnected     Status = "connected"
 	StatusAuthenticated Status = "authenticated"
-	StatusError        Status = "error"
+	StatusError         Status = "error"
 )
 
 // Erros comuns
 var (
-	ErrSessionExists    = errors.New("session already exists")
-	ErrSessionNotFound  = errors.New("session not found")
-	ErrSessionConnected = errors.New("session is already connected")
+	ErrSessionExists       = errors.New("session already exists")
+	ErrSessionNotFound     = errors.New("session not found")
+	ErrSessionConnected    = errors.New("session is already connected")
 	ErrSessionNotConnected = errors.New("session is not connected")
-	ErrInvalidConfig    = errors.New("invalid session configuration")
+	ErrInvalidConfig       = errors.New("invalid session configuration")
 )
 
 // Session representa uma sessão WhatsApp
 type Session struct {
-	ID        string
-	Config    *Config
-	Status    Status
-	Client    *whatsmeow.Client
-	CreatedAt time.Time
+	ID          string
+	Config      *Config
+	Status      Status
+	Client      *whatsmeow.Client
+	CreatedAt   time.Time
 	ConnectedAt *time.Time
-	logger    logger.Logger
+	logger      logger.Logger
 }
 
 // Config representa a configuração de uma sessão
 type Config struct {
-	Name          string        `json:"name"`
-	Token         string        `json:"token"`
-	Proxy         *ProxyConfig  `json:"proxy,omitempty"`
+	SessionID     string         `json:"session_id,omitempty"`
+	Name          string         `json:"name"`
+	APIKey        string         `json:"api_key,omitempty"`
+	Proxy         *ProxyConfig   `json:"proxy,omitempty"`
 	Webhook       *WebhookConfig `json:"webhook,omitempty"`
-	AutoReconnect bool          `json:"auto_reconnect"`
-	LogLevel      string        `json:"log_level"`
+	AutoReconnect bool           `json:"auto_reconnect"`
+	LogLevel      string         `json:"log_level"`
 }
 
 // ProxyConfig representa a configuração de proxy
@@ -130,12 +132,16 @@ func (s *Session) GetInfo() *SessionInfo {
 
 // SessionInfo representa informações básicas de uma sessão
 type SessionInfo struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Status      Status     `json:"status"`
-	JID         *string    `json:"jid,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	ConnectedAt *time.Time `json:"connected_at,omitempty"`
+	ID                string     `json:"id"`
+	Name              string     `json:"name"`
+	APIKey            string     `json:"api_key,omitempty"`
+	Status            Status     `json:"status"`
+	JID               *string    `json:"jid,omitempty"`
+	IsConnected       bool       `json:"is_connected"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	ConnectedAt       *time.Time `json:"connected_at,omitempty"`
+	LastConnectedAt   *time.Time `json:"last_connected_at,omitempty"`
 }
 
 // QRCodeInfo representa informações do QR Code

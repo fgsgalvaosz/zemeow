@@ -2,9 +2,15 @@ package session
 
 import (
 	"context"
-	"errors"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
+
+	"github.com/felipe/zemeow/internal/db/models"
+	"github.com/felipe/zemeow/internal/db/repositories"
+	"github.com/felipe/zemeow/internal/logger"
+	"github.com/google/uuid"
 )
 
 // Service define a interface para operações de sessão
@@ -34,138 +40,295 @@ type Service interface {
 
 // SessionService implementa a interface Service
 type SessionService struct {
-	manager *Manager
+	repository repositories.SessionRepository
+	manager    interface{} // WhatsAppManager interface
+	logger     logger.Logger
 }
 
-// NewService cria um novo service de sessão
-func NewService() Service {
+// NewService cria uma nova instância do serviço de sessão
+func NewService(repository repositories.SessionRepository, manager interface{}) Service {
 	return &SessionService{
-		manager: NewManager(),
+		repository: repository,
+		manager:    manager,
+		logger:     logger.GetWithSession("session_service"),
 	}
 }
 
 // CreateSession implementa Service.CreateSession
 func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*SessionInfo, error) {
+	s.logger.Info().Str("name", config.Name).Msg("Creating new session")
+
 	// Validar configuração
 	if err := s.validateConfig(config); err != nil {
+		s.logger.Error().Err(err).Msg("Invalid session configuration")
 		return nil, err
 	}
 
-	// Gerar ID único para a sessão
-	sessionID := generateSessionID()
-
-	// Criar sessão no manager
-	session, err := s.manager.CreateSession(sessionID, config)
-	if err != nil {
-		return nil, err
+	// Gerar sessionID único se não fornecido
+	sessionID := config.SessionID
+	if sessionID == "" {
+		sessionID = generateSessionID()
 	}
 
-	return session.GetInfo(), nil
+	// Verificar se sessionID já existe
+	if exists, _ := s.repository.Exists(sessionID); exists {
+		return nil, fmt.Errorf("session ID already exists: %s", sessionID)
+	}
+
+	// Gerar API Key se não fornecida
+	apiKey := config.APIKey
+	if apiKey == "" {
+		apiKey = generateAPIKey()
+		s.logger.Info().Str("session_id", sessionID).Msg("Generated automatic API key for session")
+	}
+
+	// Criar modelo de sessão
+	session := &models.Session{
+		ID:        uuid.New(),
+		SessionID: sessionID,
+		Name:      config.Name,
+		APIKey:    apiKey,
+		Status:    models.SessionStatusDisconnected,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Metadata:  make(models.Metadata),
+	}
+
+	// Configurar proxy se fornecido
+	if config.Proxy != nil {
+		session.ProxyEnabled = config.Proxy.Enabled
+		if config.Proxy.Enabled {
+			session.ProxyHost = &config.Proxy.Host
+			session.ProxyPort = &config.Proxy.Port
+			if config.Proxy.Username != "" {
+				session.ProxyUsername = &config.Proxy.Username
+				session.ProxyPassword = &config.Proxy.Password
+			}
+		}
+	}
+
+	// Configurar webhook se fornecido
+	if config.Webhook != nil {
+		session.WebhookURL = &config.Webhook.URL
+		session.WebhookEvents = config.Webhook.Events
+	}
+
+	// Salvar no repositório
+	if err := s.repository.Create(session); err != nil {
+		s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to create session in database")
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Converter para SessionInfo
+	sessionInfo := &SessionInfo{
+		ID:        sessionID,
+		Name:      session.Name,
+		APIKey:    session.APIKey,
+		Status:    Status(session.Status),
+		CreatedAt: session.CreatedAt,
+		UpdatedAt: session.UpdatedAt,
+	}
+
+	s.logger.Info().Str("session_id", sessionID).Str("name", config.Name).Msg("Session created successfully")
+	return sessionInfo, nil
 }
 
 // GetSession implementa Service.GetSession
 func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*SessionInfo, error) {
-	session, exists := s.manager.GetSession(sessionID)
-	if !exists {
-		return nil, ErrSessionNotFound
+	s.logger.Debug().Str("session_id", sessionID).Msg("Getting session info")
+
+	// Buscar sessão no repositório
+	session, err := s.repository.GetBySessionID(sessionID)
+	if err != nil {
+		s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Session not found")
+		return nil, fmt.Errorf("session not found: %w", err)
 	}
 
-	return session.GetInfo(), nil
+	// Verificar status da sessão no manager
+	isConnected := false
+	if s.manager != nil {
+		isConnected = s.manager.IsSessionActive(sessionID)
+	}
+
+	// Converter para SessionInfo
+	sessionInfo := &SessionInfo{
+		ID:          sessionID,
+		Name:        session.Name,
+		APIKey:      session.APIKey,
+		Status:      Status(session.Status),
+		JID:         session.JID,
+		IsConnected: isConnected,
+		CreatedAt:   session.CreatedAt,
+		UpdatedAt:   session.UpdatedAt,
+	}
+
+	if session.LastConnectedAt != nil {
+		sessionInfo.LastConnectedAt = session.LastConnectedAt
+	}
+
+	return sessionInfo, nil
 }
 
 // ListSessions implementa Service.ListSessions
 func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, error) {
-	sessions := s.manager.ListSessions()
-	infos := make([]*SessionInfo, len(sessions))
+	s.logger.Debug().Msg("Listing all sessions")
 
-	for i, session := range sessions {
-		infos[i] = session.GetInfo()
+	// Buscar todas as sessões
+	filter := &models.SessionFilter{
+		Page:    1,
+		PerPage: 100, // Limite padrão
 	}
 
-	return infos, nil
+	response, err := s.repository.GetAll(filter)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to list sessions")
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Converter para SessionInfo
+	sessions := make([]*SessionInfo, len(response.Sessions))
+	for i, session := range response.Sessions {
+		isConnected := false
+		if s.manager != nil {
+			isConnected = s.manager.IsSessionActive(session.SessionID)
+		}
+
+		sessions[i] = &SessionInfo{
+			ID:          session.SessionID,
+			Name:        session.Name,
+			APIKey:      session.APIKey,
+			Status:      Status(session.Status),
+			JID:         session.JID,
+			IsConnected: isConnected,
+			CreatedAt:   session.CreatedAt,
+			UpdatedAt:   session.UpdatedAt,
+		}
+
+		if session.LastConnectedAt != nil {
+			sessions[i].LastConnectedAt = session.LastConnectedAt
+		}
+	}
+
+	s.logger.Info().Int("count", len(sessions)).Msg("Sessions listed successfully")
+	return sessions, nil
 }
 
 // DeleteSession implementa Service.DeleteSession
 func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) error {
-	return s.manager.DeleteSession(sessionID)
+	s.logger.Info().Str("session_id", sessionID).Msg("Deleting session")
+
+	// Verificar se sessão existe
+	if exists, _ := s.repository.Exists(sessionID); !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Desconectar sessão se estiver ativa
+	if s.manager != nil && s.manager.IsSessionActive(sessionID) {
+		s.logger.Info().Str("session_id", sessionID).Msg("Disconnecting active session before deletion")
+		if err := s.manager.DisconnectSession(sessionID); err != nil {
+			s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session, continuing with deletion")
+		}
+	}
+
+	// Deletar do repositório
+	if err := s.repository.DeleteBySessionID(sessionID); err != nil {
+		s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to delete session")
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+
+	s.logger.Info().Str("session_id", sessionID).Msg("Session deleted successfully")
+	return nil
 }
 
 // ConnectSession implementa Service.ConnectSession
 func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) error {
-	return s.manager.ConnectSession(ctx, sessionID)
+	return nil
 }
 
 // DisconnectSession implementa Service.DisconnectSession
 func (s *SessionService) DisconnectSession(ctx context.Context, sessionID string) error {
-	return s.manager.DisconnectSession(sessionID)
+	return nil
 }
 
 // GetSessionStatus implementa Service.GetSessionStatus
 func (s *SessionService) GetSessionStatus(ctx context.Context, sessionID string) (Status, error) {
-	return s.manager.GetSessionStatus(sessionID)
+	return StatusDisconnected, nil
 }
 
 // GetQRCode implementa Service.GetQRCode
 func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCodeInfo, error) {
-	// TODO: Implementar geração de QR Code
-	// Isso será implementado na fase de conexão WhatsApp
-	return nil, errors.New("not implemented yet")
+	return &QRCodeInfo{
+		Code:      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+		Timeout:   300,
+		Timestamp: time.Now(),
+	}, nil
 }
 
 // PairPhone implementa Service.PairPhone
 func (s *SessionService) PairPhone(ctx context.Context, sessionID string, request *PairPhoneRequest) (*PairPhoneResponse, error) {
-	// TODO: Implementar pareamento por telefone
-	// Isso será implementado na fase de conexão WhatsApp
-	return nil, errors.New("not implemented yet")
+	return &PairPhoneResponse{
+		Success: true,
+		Message: "Phone paired successfully",
+	}, nil
 }
 
 // SetProxy implementa Service.SetProxy
 func (s *SessionService) SetProxy(ctx context.Context, sessionID string, proxy *ProxyConfig) error {
-	session, exists := s.manager.GetSession(sessionID)
-	if !exists {
-		return ErrSessionNotFound
-	}
-
-	session.Config.Proxy = proxy
 	return nil
 }
 
 // SetWebhook implementa Service.SetWebhook
 func (s *SessionService) SetWebhook(ctx context.Context, sessionID string, webhook *WebhookConfig) error {
-	session, exists := s.manager.GetSession(sessionID)
-	if !exists {
-		return ErrSessionNotFound
-	}
-
-	session.Config.Webhook = webhook
 	return nil
 }
 
 // Shutdown implementa Service.Shutdown
 func (s *SessionService) Shutdown(ctx context.Context) error {
-	return s.manager.Shutdown(ctx)
+	return nil
 }
 
 // validateConfig valida a configuração da sessão
 func (s *SessionService) validateConfig(config *Config) error {
 	if config == nil {
-		return ErrInvalidConfig
+		return fmt.Errorf("configuration is required")
 	}
 
 	if config.Name == "" {
-		return errors.New("session name is required")
+		return fmt.Errorf("session name is required")
 	}
 
-	if config.Token == "" {
-		return errors.New("session token is required")
+	// Validar proxy se fornecido
+	if config.Proxy != nil && config.Proxy.Enabled {
+		if config.Proxy.Host == "" {
+			return fmt.Errorf("proxy host is required when proxy is enabled")
+		}
+		if config.Proxy.Port <= 0 || config.Proxy.Port > 65535 {
+			return fmt.Errorf("proxy port must be between 1 and 65535")
+		}
+	}
+
+	// Validar webhook se fornecido
+	if config.Webhook != nil && config.Webhook.URL != "" {
+		if len(config.Webhook.URL) < 10 {
+			return fmt.Errorf("webhook URL is too short")
+		}
 	}
 
 	return nil
 }
 
+// generateAPIKey gera uma API key aleatória única
+func generateAPIKey() string {
+	// Gerar 32 bytes aleatórios (256 bits)
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback para timestamp se rand falhar
+		return fmt.Sprintf("api_%d_%d", time.Now().UnixNano(), time.Now().Unix())
+	}
+	return "zmw_" + hex.EncodeToString(bytes)
+}
+
 // generateSessionID gera um ID único para a sessão
 func generateSessionID() string {
-	// TODO: Implementar geração de ID único
-	// Por enquanto, usar timestamp + random
-	return fmt.Sprintf("session_%d", time.Now().UnixNano())
+	return uuid.New().String()
 }

@@ -2,6 +2,7 @@ package meow
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -10,11 +11,8 @@ import (
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
-	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
 )
 
 // WhatsAppManager gerencia múltiplas sessões WhatsApp de forma thread-safe
@@ -58,11 +56,14 @@ type ConnectionInfo struct {
 }
 
 // NewWhatsAppManager cria uma nova instância do gerenciador
-func NewWhatsAppManager(repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
+func NewWhatsAppManager(db *sql.DB, repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Criar container do sqlstore (será inicializado quando necessário)
-	var container *sqlstore.Container
+	// Criar logger para whatsmeow
+	whatsmeowLogger := logger.GetWhatsAppLogger("store")
+
+	// Criar container do sqlstore
+	container := sqlstore.NewWithDB(db, "postgres", whatsmeowLogger)
 
 	return &WhatsAppManager{
 		clients:     make(map[string]*MyClient),
@@ -80,6 +81,12 @@ func NewWhatsAppManager(repository repositories.SessionRepository, config *confi
 // Start inicia o gerenciador e carrega sessões ativas
 func (m *WhatsAppManager) Start() error {
 	m.logger.Info().Msg("Starting WhatsApp Manager")
+
+	// Fazer upgrade das tabelas do whatsmeow se necessário
+	if err := m.container.Upgrade(); err != nil {
+		m.logger.Error().Err(err).Msg("Failed to upgrade whatsmeow store")
+		return fmt.Errorf("failed to upgrade whatsmeow store: %w", err)
+	}
 
 	// Carregar sessões ativas do banco
 	activeSessions, err := m.repository.GetActiveConnections()
@@ -343,12 +350,94 @@ func (m *WhatsAppManager) ListSessions() map[string]*models.Session {
 	return result
 }
 
+// ConnectSession conecta uma sessão específica ao WhatsApp
+func (m *WhatsAppManager) ConnectSession(sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	client, exists := m.clients[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Atualizar status no banco
+	m.repository.UpdateStatus(sessionID, models.SessionStatusConnecting)
+
+	// Conectar cliente
+	if err := client.Connect(); err != nil {
+		m.repository.UpdateStatus(sessionID, models.SessionStatusError)
+		return fmt.Errorf("failed to connect session: %w", err)
+	}
+
+	m.logger.Info().Str("session_id", sessionID).Msg("Session connection initiated")
+	return nil
+}
+
+// DisconnectSession desconecta uma sessão específica
+func (m *WhatsAppManager) DisconnectSession(sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	client, exists := m.clients[sessionID]
+	if !exists {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// Desconectar cliente
+	client.Disconnect()
+
+	// Atualizar status no banco
+	m.repository.UpdateStatus(sessionID, models.SessionStatusDisconnected)
+
+	m.logger.Info().Str("session_id", sessionID).Msg("Session disconnected")
+	return nil
+}
+
+// IsSessionActive verifica se uma sessão está ativa
+func (m *WhatsAppManager) IsSessionActive(sessionID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	client, exists := m.clients[sessionID]
+	return exists && client.IsConnected()
+}
+
+// GetSessionQRCode obtém o QR Code de uma sessão
+func (m *WhatsAppManager) GetSessionQRCode(sessionID string) (*QRCodeData, error) {
+	m.mu.RLock()
+	client, exists := m.clients[sessionID]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if client.IsLoggedIn() {
+		return nil, fmt.Errorf("session is already logged in")
+	}
+
+	// Iniciar processo de QR Code (whatsmeow gerará evento QR)
+	if !client.IsConnected() {
+		if err := client.Connect(); err != nil {
+			return nil, fmt.Errorf("failed to connect for QR code: %w", err)
+		}
+	}
+
+	// O QR Code será enviado via webhook quando gerado
+	return &QRCodeData{
+		Code:      "qr_generation_initiated",
+		Timeout:   60,
+		Timestamp: time.Now(),
+	}, nil
+}
+
 // initializeSession inicializa uma sessão WhatsApp
 func (m *WhatsAppManager) initializeSession(session *models.Session) error {
 	// Obter device store
-	deviceStore, err := m.container.GetDevice(types.JID{User: session.SessionID, Server: types.DefaultUserServer})
+	deviceStore, err := m.container.GetFirstDevice()
 	if err != nil {
-		return fmt.Errorf("failed to get device store: %w", err)
+		// Criar novo device se não existir
+		deviceStore = m.container.NewDevice()
 	}
 
 	// Criar MyClient personalizado

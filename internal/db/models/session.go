@@ -26,6 +26,7 @@ type Session struct {
 	ID              uuid.UUID      `json:"id" db:"id"`
 	SessionID       string         `json:"session_id" db:"session_id"`
 	Name            string         `json:"name" db:"name"`
+	APIKey          string         `json:"api_key" db:"api_key"`
 	Token           string         `json:"token" db:"token"`
 	JID             *string        `json:"jid,omitempty" db:"jid"`
 	Status          SessionStatus  `json:"status" db:"status"`
@@ -99,8 +100,9 @@ func (m *Metadata) Scan(value interface{}) error {
 
 // CreateSessionRequest representa uma requisição para criar uma nova sessão
 type CreateSessionRequest struct {
-	SessionID string         `json:"session_id" validate:"required,min=3,max=255"`
+	SessionID string         `json:"session_id" validate:"omitempty,min=3,max=255"`
 	Name      string         `json:"name" validate:"required,min=1,max=255"`
+	APIKey    string         `json:"api_key,omitempty" validate:"omitempty,min=10,max=255"`
 	Proxy     *ProxyConfig   `json:"proxy,omitempty"`
 	Webhook   *WebhookConfig `json:"webhook,omitempty"`
 }
@@ -190,8 +192,8 @@ func (s *Session) Validate() error {
 	if s.Name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if s.Token == "" {
-		return fmt.Errorf("token is required")
+	if s.APIKey == "" {
+		return fmt.Errorf("api_key is required")
 	}
 	return nil
 }

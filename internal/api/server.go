@@ -12,29 +12,26 @@ import (
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
-	"github.com/felipe/zemeow/internal/service/auth"
-	"github.com/felipe/zemeow/internal/service/meow"
-	"github.com/felipe/zemeow/internal/service/webhook"
+	"github.com/felipe/zemeow/internal/service/session"
 )
 
 // Server representa o servidor HTTP
 type Server struct {
-	app             *fiber.App
-	config          *config.Config
-	logger          logger.Logger
-	authHandler     *handlers.AuthHandler
-	sessionHandler  *handlers.SessionHandler
-	webhookHandler  *handlers.WebhookHandler
-	authMiddleware  *middleware.AuthMiddleware
+	app            *fiber.App
+	config         *config.Config
+	logger         logger.Logger
+	sessionHandler *handlers.SessionHandler
+	messageHandler *handlers.MessageHandler
+	webhookHandler *handlers.WebhookHandler
+	authMiddleware *middleware.AuthMiddleware
 }
 
 // NewServer cria uma nova instância do servidor
 func NewServer(
 	cfg *config.Config,
 	sessionRepo repositories.SessionRepository,
-	whatsappMgr *meow.WhatsAppManager,
-	authService *auth.AuthService,
-	webhookService *webhook.Service,
+	sessionService interface{},
+	authService interface{},
 ) *Server {
 	// Configurar Fiber
 	app := fiber.New(fiber.Config{
@@ -59,19 +56,19 @@ func NewServer(
 	})
 
 	// Criar handlers
-	authHandler := handlers.NewAuthHandler(authService)
-	sessionHandler := handlers.NewSessionHandler(sessionRepo, whatsappMgr, authService)
-	webhookHandler := handlers.NewWebhookHandler(webhookService, authService)
+	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service))
+	messageHandler := handlers.NewMessageHandler()
+	webhookHandler := handlers.NewWebhookHandler()
 
 	// Criar middleware
-	authMiddleware := middleware.NewAuthMiddleware(authService)
+	authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
 
 	return &Server{
 		app:            app,
 		config:         cfg,
 		logger:         logger.GetWithSession("api_server"),
-		authHandler:    authHandler,
 		sessionHandler: sessionHandler,
+		messageHandler: messageHandler,
 		webhookHandler: webhookHandler,
 		authMiddleware: authMiddleware,
 	}
@@ -84,8 +81,11 @@ func (s *Server) SetupRoutes() {
 	s.app.Use(s.authMiddleware.CORS())
 	s.app.Use(s.authMiddleware.RequestLogger())
 
+	// API routes (sem prefixo v1)
+	api := s.app
+
 	// Health check
-	s.app.Get("/health", func(c *fiber.Ctx) error {
+	api.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status":    "ok",
 			"timestamp": time.Now().Unix(),
@@ -93,58 +93,46 @@ func (s *Server) SetupRoutes() {
 		})
 	})
 
-	// API v1 routes
-	api := s.app.Group("/api/v1")
-
-	// Auth routes (públicas)
-	auth := api.Group("/auth")
-	auth.Post("/login", s.authHandler.Login)
-	auth.Post("/refresh", s.authHandler.RefreshToken)
-	auth.Get("/validate", s.authHandler.ValidateToken)
-
-	// Auth routes (autenticadas)
-	authProtected := auth.Use(s.authMiddleware.RequireAuth())
-	authProtected.Post("/token", s.authHandler.GenerateAPIToken)
-	authProtected.Delete("/token", s.authHandler.RevokeToken)
-	authProtected.Get("/info", s.authHandler.GetTokenInfo)
-
-	// Session routes
+	// Session routes (admin only - requer Admin API Key)
 	sessions := api.Group("/sessions")
+	sessions.Use(s.authMiddleware.RequireAdmin())
+	sessions.Post("/", s.sessionHandler.CreateSession)
+	sessions.Get("/", s.sessionHandler.GetAllSessions)
+	sessions.Get("/active", s.sessionHandler.GetActiveConnections)
 
-	// Session routes (admin only)
-	sessionsAdmin := sessions.Use(s.authMiddleware.RequireAdmin())
-	sessionsAdmin.Post("/", s.sessionHandler.CreateSession)
-	sessionsAdmin.Get("/", s.sessionHandler.GetAllSessions)
-	sessionsAdmin.Get("/active", s.sessionHandler.GetActiveConnections)
-	sessionsAdmin.Delete("/:sessionId", s.sessionHandler.DeleteSession)
+	// Session operations (requer Session API Key ou Admin API Key)
+	sessions.Use(s.authMiddleware.RequireAuth())
+	sessions.Get("/:sessionId", s.sessionHandler.GetSession)
+	sessions.Put("/:sessionId", s.sessionHandler.UpdateSession)
+	sessions.Delete("/:sessionId", s.sessionHandler.DeleteSession)
+	sessions.Post("/:sessionId/connect", s.sessionHandler.ConnectSession)
+	sessions.Post("/:sessionId/disconnect", s.sessionHandler.DisconnectSession)
+	sessions.Post("/:sessionId/logout", s.sessionHandler.LogoutSession)
+	sessions.Post("/:sessionId/pairphone", s.sessionHandler.PairPhone)
+	sessions.Get("/:sessionId/status", s.sessionHandler.GetSessionStatus)
+	sessions.Get("/:sessionId/qr", s.sessionHandler.GetSessionQRCode)
+	sessions.Get("/:sessionId/stats", s.sessionHandler.GetSessionStats)
 
-	// Session routes (autenticadas com acesso à sessão)
-	sessionsAuth := sessions.Use(s.authMiddleware.RequireAuth())
-	sessionsAuth.Get("/:sessionId", s.sessionHandler.GetSession)
-	sessionsAuth.Put("/:sessionId", s.sessionHandler.UpdateSession)
-	sessionsAuth.Post("/:sessionId/connect", s.sessionHandler.ConnectSession)
-	sessionsAuth.Post("/:sessionId/disconnect", s.sessionHandler.DisconnectSession)
-	sessionsAuth.Get("/:sessionId/status", s.sessionHandler.GetSessionStatus)
-	sessionsAuth.Get("/:sessionId/qr", s.sessionHandler.GetSessionQRCode)
-	sessionsAuth.Get("/:sessionId/stats", s.sessionHandler.GetSessionStats)
+	// Proxy operations
+	sessions.Post("/:sessionId/proxy", s.sessionHandler.SetProxy)
+	sessions.Get("/:sessionId/proxy", s.sessionHandler.GetProxy)
+	sessions.Post("/:sessionId/proxy/test", s.sessionHandler.TestProxy)
 
-	// Webhook routes
+	// Message operations
+	sessions.Post("/:sessionId/messages", s.messageHandler.SendMessage)
+	sessions.Get("/:sessionId/messages", s.messageHandler.GetMessages)
+	sessions.Post("/:sessionId/messages/bulk", s.messageHandler.SendBulkMessages)
+	sessions.Get("/:sessionId/messages/:messageId/status", s.messageHandler.GetMessageStatus)
+
+	// Webhook operations (admin only)
 	webhooks := api.Group("/webhooks")
-
-	// Webhook routes (admin only)
-	webhooksAdmin := webhooks.Use(s.authMiddleware.RequireAdmin())
-	webhooksAdmin.Post("/send", s.webhookHandler.SendWebhook)
-	webhooksAdmin.Get("/stats", s.webhookHandler.GetWebhookStats)
-	webhooksAdmin.Post("/start", s.webhookHandler.StartWebhookService)
-	webhooksAdmin.Post("/stop", s.webhookHandler.StopWebhookService)
-	webhooksAdmin.Get("/status", s.webhookHandler.GetWebhookServiceStatus)
-
-	// Webhook routes (autenticadas com acesso à sessão)
-	webhooksAuth := webhooks.Use(s.authMiddleware.RequireAuth())
-	webhooksAuth.Get("/sessions/:sessionId/stats", s.webhookHandler.GetSessionWebhookStats)
-
-	// Rate limiting para rotas públicas
-	auth.Use(s.authMiddleware.RateLimit(60)) // 60 requests per minute
+	webhooks.Use(s.authMiddleware.RequireAdmin())
+	webhooks.Post("/send", s.webhookHandler.SendWebhook)
+	webhooks.Get("/stats", s.webhookHandler.GetWebhookStats)
+	webhooks.Post("/start", s.webhookHandler.StartWebhookService)
+	webhooks.Post("/stop", s.webhookHandler.StopWebhookService)
+	webhooks.Get("/status", s.webhookHandler.GetWebhookServiceStatus)
+	webhooks.Get("/sessions/:sessionId/stats", s.webhookHandler.GetSessionWebhookStats)
 
 	s.logger.Info().Msg("API routes configured successfully")
 }

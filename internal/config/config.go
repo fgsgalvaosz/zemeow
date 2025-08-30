@@ -47,10 +47,7 @@ type ServerConfig struct {
 
 // AuthConfig configurações de autenticação
 type AuthConfig struct {
-	AdminToken    string
-	JWTSecret     string
-	SessionSecret string
-	TokenExpiry   time.Duration
+	AdminAPIKey string
 }
 
 // WhatsAppConfig configurações do WhatsApp
@@ -104,10 +101,7 @@ func Load() (*Config, error) {
 			IdleTimeout:  getEnvAsDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
 		},
 		Auth: AuthConfig{
-			AdminToken:    getEnv("ADMIN_TOKEN", "admin_secret_token"),
-			JWTSecret:     getEnv("JWT_SECRET", "jwt_secret_key"),
-			SessionSecret: getEnv("SESSION_SECRET", "session_secret_key"),
-			TokenExpiry:   getEnvAsDuration("TOKEN_EXPIRY", 24*time.Hour),
+			AdminAPIKey: getEnv("ADMIN_API_KEY", "admin_secret_key"),
 		},
 		WhatsApp: WhatsAppConfig{
 			Timeout:           getEnvAsDuration("WHATSAPP_TIMEOUT", 30*time.Second),
@@ -152,11 +146,8 @@ func (c *Config) Validate() error {
 	if c.Database.User == "" {
 		return fmt.Errorf("database user is required")
 	}
-	if c.Auth.AdminToken == "" {
-		return fmt.Errorf("admin token is required")
-	}
-	if c.Auth.JWTSecret == "" {
-		return fmt.Errorf("JWT secret is required")
+	if c.Auth.AdminAPIKey == "" {
+		return fmt.Errorf("admin API key is required")
 	}
 	return nil
 }

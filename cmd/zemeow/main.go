@@ -1,11 +1,10 @@
 package main
 
 import (
-	"context"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/felipe/zemeow/internal/api"
 	"github.com/felipe/zemeow/internal/config"
@@ -13,103 +12,86 @@ import (
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/meow"
-	"github.com/felipe/zemeow/internal/service/webhook"
+	"github.com/felipe/zemeow/internal/service/session"
 )
 
 func main() {
-	// Inicializar logger
-	log := logger.GetWithSession("main")
-	log.Info().Msg("Starting ZeMeow application")
-
-	// Carregar configuração
+	// Carregar configurações
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load configuration")
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	log.Info().Msg("Configuration loaded successfully")
+	// Validar configurações
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
+
+	// Inicializar logger
+	logger.Init(cfg.Logging.Level, cfg.Logging.Pretty)
+	mainLogger := logger.GetWithSession("main")
+
+	mainLogger.Info().Str("environment", cfg.Server.Environment).Msg("Starting ZeMeow API server")
 
 	// Conectar ao banco de dados
-	dbConn, err := db.Connect(cfg)
+	database, err := db.New(&cfg.Database)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to database")
+		mainLogger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
-	defer dbConn.Close()
+	defer database.Close()
 
-	log.Info().Msg("Database connected successfully")
-
-	// Executar migrações
-	if err := db.Migrate(dbConn); err != nil {
-		log.Fatal().Err(err).Msg("Failed to run database migrations")
+	// Executar migrations
+	mainLogger.Info().Msg("Running database migrations")
+	if err := database.Migrate(); err != nil {
+		mainLogger.Fatal().Err(err).Msg("Failed to run database migrations")
 	}
 
-	log.Info().Msg("Database migrations completed")
+	// Aplicar otimizações para WhatsApp
+	if err := database.OptimizeForWhatsApp(); err != nil {
+		mainLogger.Warn().Err(err).Msg("Failed to apply WhatsApp optimizations")
+	}
+
+	// Criar índices otimizados
+	if err := database.CreateIndexes(); err != nil {
+		mainLogger.Warn().Err(err).Msg("Failed to create optimized indexes")
+	}
 
 	// Inicializar repositórios
-	sessionRepo := repositories.NewSessionRepository(dbConn)
+	sessionRepo := repositories.NewSessionRepository(database.DB)
+
+	// Inicializar WhatsApp Manager
+	whatsAppManager := meow.NewWhatsAppManager(database.DB, sessionRepo, cfg)
+	if err := whatsAppManager.Start(); err != nil {
+		mainLogger.Fatal().Err(err).Msg("Failed to start WhatsApp manager")
+	}
+	defer whatsAppManager.Stop()
 
 	// Inicializar serviços
-	whatsappMgr := meow.NewWhatsAppManager(sessionRepo, cfg)
-	webhookService := webhook.NewWebhookService(cfg, whatsappMgr)
+	sessionService := session.NewService(sessionRepo, whatsAppManager)
 
-	log.Info().Msg("Services initialized successfully")
-
-	// Inicializar servidor HTTP
-	server := api.NewServer(
-		cfg,
-		sessionRepo,
-		whatsappMgr,
-		webhookService,
-	)
+	// Criar servidor HTTP
+	server := api.NewServer(cfg, sessionRepo, sessionService, nil)
 
 	// Canal para capturar sinais do sistema
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	// Iniciar servidor em goroutine
 	go func() {
+		mainLogger.Info().Int("port", cfg.Server.Port).Msg("HTTP server listening")
 		if err := server.Start(); err != nil {
-			log.Fatal().Err(err).Msg("Failed to start HTTP server")
+			mainLogger.Fatal().Err(err).Msg("Failed to start HTTP server")
 		}
 	}()
-
-	log.Info().Msg("ZeMeow application started successfully")
 
 	// Aguardar sinal de parada
-	<-sigChan
-	log.Info().Msg("Shutdown signal received")
+	<-quit
+	mainLogger.Info().Msg("Shutting down server...")
 
-	// Graceful shutdown
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Parar serviços
-	log.Info().Msg("Stopping services...")
-
-	// Parar webhook service
-	webhookService.Stop()
-	log.Info().Msg("Webhook service stopped")
-
-	// Parar WhatsApp manager
-	whatsappMgr.Stop()
-	log.Info().Msg("WhatsApp manager stopped")
-
-	// Parar servidor HTTP
-	go func() {
-		if err := server.Stop(); err != nil {
-			log.Error().Err(err).Msg("Error stopping HTTP server")
-		} else {
-			log.Info().Msg("HTTP server stopped")
-		}
-	}()
-
-	// Aguardar shutdown ou timeout
-	select {
-	case <-shutdownCtx.Done():
-		log.Warn().Msg("Shutdown timeout reached")
-	case <-time.After(5 * time.Second):
-		log.Info().Msg("Graceful shutdown completed")
+	// Parar servidor graciosamente
+	if err := server.Stop(); err != nil {
+		mainLogger.Error().Err(err).Msg("Failed to stop server gracefully")
 	}
 
-	log.Info().Msg("ZeMeow application stopped")
+	mainLogger.Info().Msg("ZeMeow API server stopped")
 }

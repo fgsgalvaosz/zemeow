@@ -203,7 +203,7 @@ func (s *WebhookService) worker(id int) {
 				s.logger.Error().Err(err).Int("worker_id", id).Str("session_id", payload.SessionID).Msg("Failed to send webhook")
 				
 				// Retry se não excedeu o limite
-				if payload.Retries < s.config.Webhook.MaxRetries {
+				if payload.Retries < s.config.Webhook.RetryCount {
 					payload.Retries++
 					
 					// Delay exponencial

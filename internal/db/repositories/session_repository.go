@@ -16,7 +16,7 @@ type SessionRepository interface {
 	Create(session *models.Session) error
 	GetByID(id uuid.UUID) (*models.Session, error)
 	GetBySessionID(sessionID string) (*models.Session, error)
-	GetByToken(token string) (*models.Session, error)
+	GetByAPIKey(apiKey string) (*models.Session, error)
 	GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error)
 	Update(session *models.Session) error
 	UpdateStatus(sessionID string, status models.SessionStatus) error
@@ -59,7 +59,7 @@ func (r *sessionRepository) Create(session *models.Session) error {
 
 	query := `
 		INSERT INTO sessions (
-			id, session_id, name, token, jid, status,
+			id, session_id, name, api_key, jid, status,
 			proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 			webhook_url, webhook_events, created_at, updated_at, metadata
 		) VALUES (
@@ -68,7 +68,7 @@ func (r *sessionRepository) Create(session *models.Session) error {
 	`
 
 	_, err := r.db.Exec(query,
-		session.ID, session.SessionID, session.Name, session.Token, session.JID, session.Status,
+		session.ID, session.SessionID, session.Name, session.APIKey, session.JID, session.Status,
 		session.ProxyEnabled, session.ProxyHost, session.ProxyPort, session.ProxyUsername, session.ProxyPassword,
 		session.WebhookURL, session.WebhookEvents, session.CreatedAt, session.UpdatedAt, session.Metadata,
 	)
@@ -85,7 +85,7 @@ func (r *sessionRepository) Create(session *models.Session) error {
 // GetByID busca uma sessão pelo ID
 func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, token, jid, status,
+		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions WHERE id = $1
@@ -93,7 +93,7 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 
 	session := &models.Session{}
 	err := r.db.QueryRow(query, id).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.Token, &session.JID, &session.Status,
+		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -112,7 +112,7 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 // GetBySessionID busca uma sessão pelo session_id
 func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, token, jid, status,
+		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions WHERE session_id = $1
@@ -120,7 +120,7 @@ func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, e
 
 	session := &models.Session{}
 	err := r.db.QueryRow(query, sessionID).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.Token, &session.JID, &session.Status,
+		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -136,18 +136,18 @@ func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, e
 	return session, nil
 }
 
-// GetByToken busca uma sessão pelo token
-func (r *sessionRepository) GetByToken(token string) (*models.Session, error) {
+// GetByAPIKey busca uma sessão pela API key
+func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, token, jid, status,
+		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
-		FROM sessions WHERE token = $1
+		FROM sessions WHERE api_key = $1
 	`
 
 	session := &models.Session{}
-	err := r.db.QueryRow(query, token).Scan(
-		&session.ID, &session.SessionID, &session.Name, &session.Token, &session.JID, &session.Status,
+	err := r.db.QueryRow(query, apiKey).Scan(
+		&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 	)
@@ -156,7 +156,7 @@ func (r *sessionRepository) GetByToken(token string) (*models.Session, error) {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("session not found")
 		}
-		r.logger.Error().Err(err).Msg("Failed to get session by token")
+		r.logger.Error().Err(err).Msg("Failed to get session by API key")
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
@@ -229,7 +229,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	// Query principal com paginação
 	offset := (filter.Page - 1) * filter.PerPage
 	query := fmt.Sprintf(`
-		SELECT id, session_id, name, token, jid, status,
+		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions %s
@@ -250,7 +250,7 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	for rows.Next() {
 		session := models.Session{}
 		err := rows.Scan(
-			&session.ID, &session.SessionID, &session.Name, &session.Token, &session.JID, &session.Status,
+			&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 			&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 			&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 		)
@@ -428,7 +428,7 @@ func (r *sessionRepository) Count() (int, error) {
 // GetActiveConnections retorna todas as sessões conectadas
 func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	query := `
-		SELECT id, session_id, name, token, jid, status,
+		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
 		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
 		FROM sessions 
@@ -447,7 +447,7 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	for rows.Next() {
 		session := &models.Session{}
 		err := rows.Scan(
-			&session.ID, &session.SessionID, &session.Name, &session.Token, &session.JID, &session.Status,
+			&session.ID, &session.SessionID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 			&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
 			&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 		)

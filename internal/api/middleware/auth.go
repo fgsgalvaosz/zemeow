@@ -5,22 +5,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
-	"github.com/felipe/zemeow/internal/service/auth"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/rs/zerolog"
 )
 
 // AuthContext representa o contexto de autenticação
 type AuthContext struct {
+	UserID    string
+	UserType  string
 	APIKey    string
 	IsAdmin   bool
+	Token     string
 	SessionID string
-	Session   *models.Session
 }
 
 // SessionInfo representa as informações de sessão no contexto
@@ -38,16 +37,17 @@ type SessionInfo struct {
 
 // AuthMiddleware gerencia autenticação e autorização
 type AuthMiddleware struct {
-	authorizationService *auth.AuthService
-	sessionRepo          repositories.SessionRepository
-	logger               zerolog.Logger
+	adminAPIKey    string
+	sessionRepo    repositories.SessionRepository
+	logger         logger.Logger
 }
 
 // NewAuthMiddleware cria um novo middleware de autenticação
-func NewAuthMiddleware(authService *auth.AuthService) *AuthMiddleware {
+func NewAuthMiddleware(adminAPIKey string, sessionRepo repositories.SessionRepository) *AuthMiddleware {
 	return &AuthMiddleware{
-		authorizationService: authService,
-		logger:               logger.GetWithSession("auth_middleware"),
+		adminAPIKey: adminAPIKey,
+		sessionRepo: sessionRepo,
+		logger:      logger.GetWithSession("auth_middleware"),
 	}
 }
 
@@ -80,78 +80,66 @@ func GetSessionID(c *fiber.Ctx) string {
 	return ""
 }
 
-// RequireAuth middleware que requer autenticação por token de sessão
+// extractAPIKey extrai a API key dos headers
+func (am *AuthMiddleware) extractAPIKey(c *fiber.Ctx) string {
+	// Tentar Authorization header primeiro
+	token := c.Get("Authorization")
+	if token != "" {
+		// Remover prefixo "Bearer " se presente
+		if strings.HasPrefix(token, "Bearer ") {
+			return strings.TrimPrefix(token, "Bearer ")
+		}
+		return token
+	}
+
+	// Tentar X-API-Key header
+	return c.Get("X-API-Key")
+}
+
+// RequireAuth middleware que requer autenticação válida (Admin ou Session API Key)
 func (am *AuthMiddleware) RequireAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Obter token do header ou query parameter
-		token := c.Get("Authorization")
-		if token == "" {
-			token = c.Get("token")
-		}
-		if token == "" {
-			token = c.Query("token")
-		}
-
-		// Remove prefix "Bearer " se existir
-		if strings.HasPrefix(token, "Bearer ") {
-			token = strings.TrimPrefix(token, "Bearer ")
-		}
-
-		if token == "" {
+		// Extrair API key
+		apiKey := am.extractAPIKey(c)
+		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error":   "TOKEN_REQUIRED",
-				"message": "Authentication token is required",
+				"error":   "MISSING_API_KEY",
+				"message": "API key is required in Authorization header or X-API-Key header",
 			})
 		}
 
-		// Validar token e obter sessão
-		session, err := am.sessionRepo.GetByToken(c.Context(), token)
+		// Verificar se é Admin API Key
+		if apiKey == am.adminAPIKey {
+			// Criar contexto de admin
+			authCtx := &AuthContext{
+				APIKey:  apiKey,
+				IsAdmin: true,
+			}
+			c.Locals("auth", authCtx)
+			am.logger.Info().Str("type", "admin").Msg("Admin authentication successful")
+			return c.Next()
+		}
+
+		// Verificar se é Session API Key
+		session, err := am.sessionRepo.GetByAPIKey(apiKey)
 		if err != nil {
-			am.logger.Warn().Err(err).Str("token", token[:10]+"...").Msg("Invalid token provided")
+			am.logger.Warn().Err(err).Str("api_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Session API key validation failed")
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error":   "INVALID_TOKEN",
-				"message": "Invalid or expired token",
-			})
-		}
-
-		if session == nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error":   "SESSION_NOT_FOUND",
-				"message": "Session not found for provided token",
+				"error":   "INVALID_API_KEY",
+				"message": "Invalid API key provided",
 			})
 		}
 
 		// Criar contexto de sessão
-		sessionInfo := &SessionInfo{
-			ID:        session.ID.String(),
+		authCtx := &AuthContext{
+			APIKey:    apiKey,
+			IsAdmin:   false,
 			SessionID: session.SessionID,
-			Name:      session.Name,
-			Token:     token,
 		}
+		c.Locals("auth", authCtx)
+		c.Locals("session", session)
 
-		if session.JID != nil {
-			sessionInfo.JID = *session.JID
-		}
-		if session.WebhookURL != nil {
-			sessionInfo.Webhook = *session.WebhookURL
-		}
-		if len(session.WebhookEvents) > 0 {
-			sessionInfo.Events = strings.Join(session.WebhookEvents, ",")
-		}
-
-		// Configurar contexto de autenticação
-		c.Locals("auth", &AuthContext{
-			APIKey:    token,
-			IsAdmin:   false, // Sessões normais não são admin
-			SessionID: session.SessionID,
-			Session:   session,
-		})
-
-		// Configurar contexto de sessão (compatibilidade com código legado)
-		c.Locals("sessioninfo", sessionInfo)
-
-		am.logger.Info().Str("session_id", session.SessionID).Str("name", session.Name).Msg("Session authenticated successfully")
-
+		am.logger.Info().Str("type", "session").Str("session_id", session.SessionID).Msg("Session authentication successful")
 		return c.Next()
 	}
 }
@@ -159,42 +147,36 @@ func (am *AuthMiddleware) RequireAuth() fiber.Handler {
 // RequireAdmin middleware que requer privilégios de administrador
 func (am *AuthMiddleware) RequireAdmin() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Obter token admin do header
-		token := c.Get("Authorization")
-		if token == "" {
-			token = c.Get("X-Admin-Token")
-		}
-		if token == "" {
-			token = c.Query("admin_token")
-		}
-
-		// Remove prefix "Bearer " se existir
-		if strings.HasPrefix(token, "Bearer ") {
-			token = strings.TrimPrefix(token, "Bearer ")
+		// Extrair API key
+		apiKey := am.extractAPIKey(c)
+		if apiKey == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error":   "MISSING_API_KEY",
+				"message": "Admin API key is required",
+			})
 		}
 
-		// Validar token de admin
-		if !am.authorizationService.ValidateAdminToken(token) {
-			am.logger.Warn().Str("token", token[:min(10, len(token))]+"...").Msg("Invalid admin token provided")
+		// Validar Admin API Key
+		if apiKey != am.adminAPIKey {
+			am.logger.Warn().Str("provided_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Admin access denied - invalid API key")
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error":   "ADMIN_ACCESS_REQUIRED",
-				"message": "Administrator access required",
+				"message": "Administrator access required - invalid Admin API key",
 			})
 		}
 
 		// Configurar contexto de admin
 		c.Locals("auth", &AuthContext{
-			APIKey:  token,
+			APIKey:  apiKey,
 			IsAdmin: true,
 		})
 
-		am.logger.Info().Msg("Admin access granted")
-
+		am.logger.Info().Msg("Admin authentication successful")
 		return c.Next()
 	}
 }
 
-// RequireSessionAccess middleware que verifica se o usuário tem acesso à sessão específica
+// RequireSessionAccess middleware que verifica acesso à sessão específica
 func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Primeiro verificar se está autenticado

@@ -34,14 +34,14 @@ func (m *Migrator) GetMigrations() []Migration {
 	return []Migration{
 		{
 			Version:     1,
-			Description: "Create sessions table",
+			Description: "Create sessions table with whatsmeow store tables",
 			Up: `
 				-- Criar tabela sessions
 				CREATE TABLE IF NOT EXISTS sessions (
 					id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 					session_id VARCHAR(255) UNIQUE NOT NULL,
 					name VARCHAR(255) NOT NULL,
-					token VARCHAR(255) UNIQUE NOT NULL,
+					api_key VARCHAR(255) UNIQUE NOT NULL,
 					jid VARCHAR(255),
 					status VARCHAR(50) DEFAULT 'disconnected',
 					proxy_enabled BOOLEAN DEFAULT FALSE,
@@ -59,7 +59,7 @@ func (m *Migrator) GetMigrations() []Migration {
 				
 				-- Índices para performance
 				CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
-				CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+				CREATE INDEX IF NOT EXISTS idx_sessions_api_key ON sessions(api_key);
 				CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 				CREATE INDEX IF NOT EXISTS idx_sessions_jid ON sessions(jid);
 				CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
@@ -74,14 +74,111 @@ func (m *Migrator) GetMigrations() []Migration {
 				$$ language 'plpgsql';
 				
 				-- Trigger para atualizar updated_at
+				DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
 				CREATE TRIGGER update_sessions_updated_at 
 					BEFORE UPDATE ON sessions 
 					FOR EACH ROW 
 					EXECUTE FUNCTION update_updated_at_column();
+				
+				-- Tabelas do whatsmeow store (integração com go.mau.fi/whatsmeow/store/sqlstore)
+				CREATE TABLE IF NOT EXISTS whatsmeow_device (
+					jid TEXT PRIMARY KEY,
+					registration_id BIGINT NOT NULL CHECK (registration_id >= 0 AND registration_id < 4294967296),
+					noise_key BYTEA NOT NULL CHECK (length(noise_key) = 32),
+					identity_key BYTEA NOT NULL CHECK (length(identity_key) = 32),
+					signed_pre_key BYTEA NOT NULL,
+					signed_pre_key_id INTEGER NOT NULL CHECK (signed_pre_key_id >= 0 AND signed_pre_key_id < 16777216),
+					signed_pre_key_sig BYTEA NOT NULL CHECK (length(signed_pre_key_sig) = 64),
+					adv_key BYTEA NOT NULL,
+					adv_details BYTEA NOT NULL,
+					adv_account_sig BYTEA NOT NULL,
+					adv_account_sig_key BYTEA NOT NULL,
+					adv_device_sig BYTEA NOT NULL,
+					platform TEXT NOT NULL DEFAULT '',
+					business_name TEXT NOT NULL DEFAULT '',
+					push_name TEXT NOT NULL DEFAULT ''
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_identity_keys (
+					our_jid TEXT,
+					their_id TEXT,
+					identity BYTEA NOT NULL,
+					PRIMARY KEY (our_jid, their_id)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_pre_keys (
+					jid TEXT,
+					key_id INTEGER,
+					key BYTEA NOT NULL,
+					uploaded BOOLEAN NOT NULL,
+					PRIMARY KEY (jid, key_id)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_sender_keys (
+					our_jid TEXT,
+					chat_id TEXT,
+					sender_id TEXT,
+					sender_key BYTEA NOT NULL,
+					PRIMARY KEY (our_jid, chat_id, sender_id)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_sync_keys (
+					jid TEXT,
+					key_id BYTEA,
+					key_data BYTEA NOT NULL,
+					timestamp BIGINT NOT NULL,
+					fingerprint BYTEA NOT NULL,
+					PRIMARY KEY (jid, key_id)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_version (
+					jid TEXT,
+					name TEXT,
+					version BIGINT NOT NULL,
+					hash BYTEA NOT NULL,
+					PRIMARY KEY (jid, name)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_mutation_macs (
+					jid TEXT,
+					name TEXT,
+					version BIGINT,
+					index_mac BYTEA,
+					value_mac BYTEA,
+					PRIMARY KEY (jid, name, version, index_mac)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_contacts (
+					our_jid TEXT,
+					their_jid TEXT,
+					first_name TEXT,
+					full_name TEXT,
+					push_name TEXT,
+					business_name TEXT,
+					PRIMARY KEY (our_jid, their_jid)
+				);
+				
+				CREATE TABLE IF NOT EXISTS whatsmeow_chat_settings (
+					our_jid TEXT,
+					chat_jid TEXT,
+					muted_until BIGINT NOT NULL DEFAULT 0,
+					pinned BOOLEAN NOT NULL DEFAULT false,
+					archived BOOLEAN NOT NULL DEFAULT false,
+					PRIMARY KEY (our_jid, chat_jid)
+				);
 			`,
 			Down: `
 				DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
 				DROP FUNCTION IF EXISTS update_updated_at_column();
+				DROP TABLE IF EXISTS whatsmeow_chat_settings;
+				DROP TABLE IF EXISTS whatsmeow_contacts;
+				DROP TABLE IF EXISTS whatsmeow_app_state_mutation_macs;
+				DROP TABLE IF EXISTS whatsmeow_app_state_version;
+				DROP TABLE IF EXISTS whatsmeow_app_state_sync_keys;
+				DROP TABLE IF EXISTS whatsmeow_sender_keys;
+				DROP TABLE IF EXISTS whatsmeow_pre_keys;
+				DROP TABLE IF EXISTS whatsmeow_identity_keys;
+				DROP TABLE IF EXISTS whatsmeow_device;
 				DROP TABLE IF EXISTS sessions;
 			`,
 		},
