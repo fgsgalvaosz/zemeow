@@ -14,7 +14,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Removido o script init.sql pois as migrações são feitas pela aplicação
     networks:
       - zemeow_network
     healthcheck:

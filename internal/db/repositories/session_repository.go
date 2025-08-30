@@ -25,6 +25,7 @@ type SessionRepository interface {
 	Exists(sessionID string) (bool, error)
 	Count() (int, error)
 	GetActiveConnections() ([]*models.Session, error)
+	Close() error
 }
 
 // sessionRepository implementa SessionRepository
@@ -425,15 +426,14 @@ func (r *sessionRepository) Count() (int, error) {
 	return count, nil
 }
 
-// GetActiveConnections retorna todas as sessões conectadas
+// GetActiveConnections retorna conexões ativas no banco de dados
 func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	query := `
 		SELECT id, session_id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
-		FROM sessions 
-		WHERE status IN ('connected', 'authenticated')
-		ORDER BY last_connected_at DESC
+		webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
+		FROM sessions WHERE status IN ('connected', 'authenticated')
+		ORDER BY last_connected_at DESC NULLS LAST, updated_at DESC
 	`
 
 	rows, err := r.db.Query(query)
@@ -443,7 +443,7 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	}
 	defer rows.Close()
 
-	var sessions []*models.Session
+	sessions := make([]*models.Session, 0)
 	for rows.Next() {
 		session := &models.Session{}
 		err := rows.Scan(
@@ -452,17 +452,22 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 			&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
 		)
 		if err != nil {
-			r.logger.Error().Err(err).Msg("Failed to scan active session")
-			return nil, fmt.Errorf("failed to scan active session: %w", err)
+			r.logger.Error().Err(err).Msg("Failed to scan active connection")
+			return nil, fmt.Errorf("failed to scan active connection: %w", err)
 		}
 		sessions = append(sessions, session)
 	}
 
 	if err = rows.Err(); err != nil {
-		r.logger.Error().Err(err).Msg("Error iterating active sessions")
-		return nil, fmt.Errorf("error iterating active sessions: %w", err)
+		r.logger.Error().Err(err).Msg("Error iterating active connections")
+		return nil, fmt.Errorf("error iterating active connections: %w", err)
 	}
 
-	r.logger.Info().Int("count", len(sessions)).Msg("Retrieved active connections")
+	r.logger.Debug().Int("count", len(sessions)).Msg("Retrieved active connections")
 	return sessions, nil
+}
+
+// Close fecha a conexão com o banco de dados
+func (r *sessionRepository) Close() error {
+	return r.db.Close()
 }

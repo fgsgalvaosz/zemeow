@@ -16,7 +16,6 @@ Sistema backend completo em Go para gerenciamento de múltiplas sessões WhatsAp
 
 - Go 1.23 ou superior
 - PostgreSQL 15+
-- Docker e Docker Compose (opcional)
 
 ## 🛠️ Instalação e Configuração
 
@@ -42,7 +41,9 @@ docker-compose up -d postgres
 go mod download
 ```
 
-### 5. Executar Migrations
+### 5. Executar a Aplicação
+As migrações do banco de dados são executadas automaticamente ao iniciar a aplicação:
+
 ```bash
 go run cmd/zemeow/main.go
 ```
@@ -198,27 +199,18 @@ docker-compose up -d
 
 ## 📝 Logs
 
-O sistema usa logs estruturados com diferentes níveis:
-- **INFO**: Operações normais
-- **ERROR**: Erros críticos
-- **DEBUG**: Informações detalhadas
-- **WARN**: Avisos importantes
+O sistema utiliza logs estruturados com diferentes níveis de severidade. Em ambiente de desenvolvimento, os logs são formatados para melhor leitura.
 
-## 🤝 Contribuição
+## 🔄 Migrações de Banco de Dados
 
-1. Fork o projeto
-2. Crie uma branch para sua feature
-3. Commit suas mudanças
-4. Push para a branch
-5. Abra um Pull Request
+As migrações são executadas automaticamente ao iniciar a aplicação. Não é necessário executar comandos manuais para migrações.
 
-## ⚠️ Avisos Importantes
+## 🛡️ Segurança
 
-- **Altere a `ADMIN_API_KEY`** para um valor seguro em produção
-- **Use HTTPS** em produção para proteger as API Keys
-- **Monitore** os logs para detectar problemas
-- **Faça backup** do banco de dados regularmente
+- Todas as API Keys são tratadas como segredos
+- Comunicação com o banco de dados pode ser configurada com SSL
+- Logs não contêm informações sensíveis
 
-## 📄 Licença
+## 📈 Monitoramento
 
-Este projeto está sob a licença MIT. Veja o arquivo LICENSE para detalhes.
+O sistema inclui métricas básicas de saúde e estatísticas de uso das sessões.

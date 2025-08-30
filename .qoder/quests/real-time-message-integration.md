@@ -4,6 +4,8 @@
 
 Este documento descreve a implementação de integração de mensagens em tempo real para o sistema ZeMeow, que permitirá o envio e recebimento de mensagens através da API RESTful integrada com o cliente WhatsApp whatsmeow. A solução centraliza as rotas de mensagens em um único arquivo e implementa a funcionalidade completa de envio de mensagens.
 
+A implementação segue a arquitetura em camadas do sistema, integrando-se adequadamente com o SessionService, SessionManager e WhatsAppManager para garantir acesso ao cliente whatsmeow subjacente através da cadeia correta de dependências.
+
 ## 2. Arquitetura Atual
 
 ### 2.1 Estrutura de Componentes
@@ -12,9 +14,10 @@ Este documento descreve a implementação de integração de mensagens em tempo 
 graph TB
     A[API HTTP - Fiber] --> B[Message Handler]
     B --> C[Session Service]
-    C --> D[WhatsApp Manager]
-    D --> E[WhatsApp Client]
-    E --> F[whatsmeow Library]
+    C --> D[Session Manager]
+    D --> E[WhatsApp Manager]
+    E --> F[MyClient]
+    F --> G[whatsmeow.Client]
     
     subgraph "Camada de Apresentação"
         A
@@ -25,15 +28,20 @@ graph TB
         C
     end
     
-    subgraph "Camada de Integração"
+    subgraph "Camada de Gerenciamento"
         D
+    end
+    
+    subgraph "Camada de Integração"
         E
         F
+        G
     end
     
     style B fill:#f96,stroke:#333
     style C fill:#6f9,stroke:#333
-    style D fill:#96f,stroke:#333
+    style D fill:#9cf,stroke:#333
+    style E fill:#96f,stroke:#333
 ```
 
 ### 2.2 Fluxo de Envio de Mensagens
@@ -44,21 +52,22 @@ sequenceDiagram
     participant API as API Server
     participant Handler as MessageHandler
     participant Service as SessionService
-    participant Manager as WhatsAppManager
-    participant Client as WhatsAppClient
+    participant Manager as SessionManager
+    participant WhatsAppMgr as WhatsAppManager
+    participant MyClient as MyClient
+    participant Whatsmeow as whatsmeow.Client
     participant WA as WhatsApp
     
     Cliente->>API: POST /sessions/{id}/send/text
     API->>Handler: SendText()
     Handler->>Service: GetWhatsAppClient()
-    Service->>Manager: GetClient()
-    Manager->>Client: Obter cliente
-    Client-->>Service: whatsmeow.Client
-    Service-->>Handler: whatsmeow.Client
-    Handler->>Client: SendMessage()
-    Client->>WA: Enviar mensagem via WebSocket
-    WA-->>Client: Confirmação
-    Client-->>Handler: Response
+    Service->>Manager: whatsappMgr.GetClient()
+    Manager->>MyClient: GetClient()
+    MyClient->>Whatsmeow: GetClient()
+    Handler->>Whatsmeow: SendMessage()
+    Whatsmeow->>WA: Enviar mensagem via WebSocket
+    WA-->>Whatsmeow: Confirmação
+    Whatsmeow-->>Handler: Response
     Handler-->>API: Response
     API-->>Cliente: JSON Response
 ```
@@ -681,40 +690,30 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 
 ## 5. Integração com Session Service
 
-### 5.1 Atualização da Interface Service
+### 5.1 Implementação do Método GetWhatsAppClient no SessionService
 
-A interface Service será atualizada para incluir o método GetWhatsAppClient:
-
-```go
-// internal/service/session/service.go
-type Service interface {
-    // ... métodos existentes ...
-    
-    // WhatsApp Client Access
-    GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error)
-}
-```
-
-### 5.2 Implementação do Método GetWhatsAppClient
+O método GetWhatsAppClient será implementado no SessionService para fornecer acesso ao cliente whatsmeow subjacente através da cadeia correta de dependências:
 
 ```go
 // internal/service/session/service.go
+
+// GetWhatsAppClient implementa Service.GetWhatsAppClient
 func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string) (interface{}, error) {
     // Verificar se o manager está disponível
     if s.manager == nil {
-        return nil, fmt.Errorf("whatsapp manager not available")
+        return nil, fmt.Errorf("session manager not available")
     }
     
-    // Converter manager para WhatsAppManager
-    whatsappManager, ok := s.manager.(*meow.WhatsAppManager)
+    // Converter manager para SessionManager
+    sessionManager, ok := s.manager.(*session.Manager)
     if !ok {
-        return nil, fmt.Errorf("invalid whatsapp manager type")
+        return nil, fmt.Errorf("invalid session manager type")
     }
     
-    // Obter cliente do manager
-    client := whatsappManager.GetClient(sessionID)
-    if client == nil {
-        return nil, fmt.Errorf("whatsapp client not found for session: %s", sessionID)
+    // Obter cliente do session manager através do WhatsAppManager
+    client, err := sessionManager.whatsappMgr.GetClient(sessionID)
+    if err != nil {
+        return nil, fmt.Errorf("whatsapp client not found for session: %s: %w", sessionID, err)
     }
     
     // Obter cliente whatsmeow subjacente
@@ -732,22 +731,29 @@ func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string
 }
 ```
 
+### 5.2 Implementação do Método GetWhatsAppClient
+
+Este método já foi adicionado à interface Service como parte da análise inicial.
+
 ## 6. Atualização do WhatsApp Manager
 
 ### 6.1 Método GetClient no WhatsAppManager
 
+O método GetClient já está implementado no WhatsAppManager:
+
 ```go
 // internal/service/meow/manager.go
-func (m *WhatsAppManager) GetClient(sessionID string) *MyClient {
+// GetClient retorna o cliente WhatsApp de uma sessão
+func (m *WhatsAppManager) GetClient(sessionID string) (*MyClient, error) {
     m.mu.RLock()
     defer m.mu.RUnlock()
-    
+
     client, exists := m.clients[sessionID]
     if !exists {
-        return nil
+        return nil, fmt.Errorf("client not found")
     }
-    
-    return client
+
+    return client, nil
 }
 ```
 
@@ -930,22 +936,89 @@ h.logger.Info().
 - Tratamento de erros e exceções
 - Validação de autenticação
 
-## 13. Implantação
+## 14. Implantação
 
-### 13.1 Atualizações Necessárias
+### 14.1 Atualizações Necessárias
 
 1. Atualizar dependências no `go.mod`
 2. Criar/migrar arquivos de rotas
 3. Implementar métodos no MessageHandler
-4. Atualizar SessionService
-5. Configurar logging adequado
+4. Implementar método GetWhatsAppClient no SessionService
+5. Atualizar inicialização do MessageHandler no server.go
+6. Configurar logging adequado
 
-### 13.2 Compatibilidade
+### 14.2 Atualização da Inicialização do Servidor
+
+Para que o MessageHandler tenha acesso ao SessionService, é necessário atualizar a inicialização no server.go:
+
+```go
+// internal/api/server.go
+func NewServer(
+    cfg *config.Config,
+    sessionRepo repositories.SessionRepository,
+    sessionService interface{},
+    authService interface{},
+) *Server {
+    // Configurar Fiber
+    app := fiber.New(fiber.Config{
+        AppName:      "ZeMeow API",
+        ServerHeader: "ZeMeow/1.0",
+        ReadTimeout:  30 * time.Second,
+        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  120 * time.Second,
+        ErrorHandler: func(c *fiber.Ctx, err error) error {
+            code := fiber.StatusInternalServerError
+            if e, ok := err.(*fiber.Error); ok {
+                code = e.Code
+            }
+
+            return c.Status(code).JSON(fiber.Map{
+                "error":     "INTERNAL_ERROR",
+                "message":   err.Error(),
+                "code":      code,
+                "timestamp": time.Now().Unix(),
+            })
+        },
+    })
+
+    // Converter sessionService para o tipo correto
+    sessionSvc, ok := sessionService.(session.Service)
+    if !ok {
+        panic("invalid session service type")
+    }
+
+    // Criar handlers
+    sessionHandler := handlers.NewSessionHandler(sessionSvc)
+    messageHandler := handlers.NewMessageHandler(sessionSvc) // Passar session service
+    webhookHandler := handlers.NewWebhookHandler()
+
+    // Criar middleware de autenticação
+    authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
+
+    // Configurar router
+    routerConfig := &routes.RouterConfig{
+        AuthMiddleware: authMiddleware,
+        SessionHandler: sessionHandler,
+        MessageHandler: messageHandler,
+        WebhookHandler: webhookHandler,
+    }
+    router := routes.NewRouter(app, routerConfig)
+
+    return &Server{
+        app:    app,
+        config: cfg,
+        logger: logger.GetWithSession("api_server"),
+        router: router,
+    }
+}
+```
+
+### 14.3 Compatibilidade
 
 - Manter compatibilidade com APIs existentes
 - Suportar formatos de dados legados
 - Garantir funcionamento com clientes existentes
 
-## 14. Conclusão
+## 15. Conclusão
 
 Esta implementação fornece uma solução completa para integração de mensagens em tempo real no ZeMeow, centralizando as rotas e integrando adequadamente com o cliente WhatsApp. A arquitetura modular permite fácil manutenção e extensão futura, mantendo os padrões de segurança e desempenho do sistema.

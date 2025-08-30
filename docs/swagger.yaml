@@ -1,0 +1,243 @@
+basePath: /
+definitions:
+  dto.ContextInfo:
+    properties:
+      mentioned_jid:
+        description: Para menções
+        items:
+          type: string
+        type: array
+      participant:
+        description: Para reply em grupo
+        type: string
+      stanza_id:
+        description: Para reply
+        type: string
+    type: object
+  dto.SendTextRequest:
+    properties:
+      context_info:
+        $ref: '#/definitions/dto.ContextInfo'
+      message_id:
+        type: string
+      text:
+        maxLength: 4096
+        type: string
+      to:
+        type: string
+    required:
+    - text
+    - to
+    type: object
+  handlers.CreateSessionRequest:
+    properties:
+      name:
+        type: string
+      proxy:
+        $ref: '#/definitions/session.ProxyConfig'
+      session_id:
+        type: string
+      webhook:
+        $ref: '#/definitions/session.WebhookConfig'
+    required:
+    - name
+    type: object
+  session.ProxyConfig:
+    properties:
+      enabled:
+        type: boolean
+      host:
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      type:
+        description: http, socks5
+        type: string
+      username:
+        type: string
+    type: object
+  session.WebhookConfig:
+    properties:
+      events:
+        items:
+          type: string
+        type: array
+      secret:
+        type: string
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: API para integração com WhatsApp usando whatsmeow
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Zemeow WhatsApp API
+  version: "1.0"
+paths:
+  /sessions:
+    post:
+      consumes:
+      - application/json
+      description: Cria uma nova sessão WhatsApp com configurações opcionais de proxy
+        e webhook
+      parameters:
+      - description: Dados da sessão
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Sessão criada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Criar nova sessão WhatsApp
+      tags:
+      - sessions
+  /sessions/{sessionId}:
+    get:
+      consumes:
+      - application/json
+      description: Retorna informações detalhadas de uma sessão específica
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detalhes da sessão
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID da sessão inválido
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Obter detalhes da sessão
+      tags:
+      - sessions
+  /sessions/{sessionId}/qr:
+    get:
+      consumes:
+      - application/json
+      description: Retorna o QR Code para autenticação da sessão WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: QR Code gerado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: ID da sessão inválido
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Obter QR Code da sessão
+      tags:
+      - sessions
+  /sessions/{sessionId}/send/text:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma mensagem de texto via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da mensagem
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendTextRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Mensagem enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar mensagem de texto
+      tags:
+      - messages
+schemes:
+- http
+- https
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

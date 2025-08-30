@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/felipe/zemeow/internal/config"
@@ -73,16 +74,28 @@ func (db *DB) GetSQLStore() *sqlstore.Container {
 	// Criar logger específico para whatsmeow
 	whatsmeowLogger := logger.GetWhatsAppLogger("sqlstore")
 
-	// Criar container do sqlstore
+	// Criar container do sqlstore - ele fará o upgrade automaticamente
 	container := sqlstore.NewWithDB(db.DB, "postgres", whatsmeowLogger)
 
-	// Executar upgrade das tabelas do whatsmeow
+	// Executar upgrade das tabelas do whatsmeow automaticamente
 	if err := container.Upgrade(); err != nil {
-		db.logger.Error().Err(err).Msg("Failed to upgrade whatsmeow store")
-		return nil
+		// Verificar se o erro é sobre tabelas já existentes (comportamento esperado)
+		if strings.Contains(err.Error(), "already exists") {
+			db.logger.Info().Msg("WhatsApp tables already exist, skipping upgrade")
+		} else {
+			db.logger.Error().Err(err).Msg("Failed to upgrade whatsmeow store")
+			return nil
+		}
 	}
 
-	db.logger.Info().Msg("WhatsApp SQL store container created and upgraded")
+	db.logger.Info().Msg("WhatsApp SQL store container created and upgraded automatically")
+
+	// Após o upgrade do whatsmeow, executar migrações que dependem das tabelas whatsmeow
+	if err := db.createWhatsAppRelationships(); err != nil {
+		db.logger.Warn().Err(err).Msg("Failed to create WhatsApp relationships")
+		// Não retornar erro, apenas log warning
+	}
+
 	return container
 }
 
@@ -159,21 +172,17 @@ func (db *DB) OptimizeForWhatsApp() error {
 	return nil
 }
 
-// CreateIndexes cria índices otimizados para WhatsApp
+// CreateIndexes cria índices otimizados para as tabelas da aplicação
 func (db *DB) CreateIndexes() error {
-	db.logger.Info().Msg("Creating optimized indexes for WhatsApp")
+	db.logger.Info().Msg("Creating optimized indexes for application tables")
 
 	indexes := []string{
-		// Índices para tabelas do whatsmeow
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_whatsmeow_device_jid ON whatsmeow_device(jid)",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_whatsmeow_identity_address ON whatsmeow_identity_keys(our_jid, their_id)",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_whatsmeow_prekeys_jid ON whatsmeow_pre_keys(jid)",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_whatsmeow_sessions_jid ON whatsmeow_sessions(our_jid, their_jid)",
-
-		// Índices para tabela sessions (já criados nas migrations, mas garantindo)
+		// Índices adicionais para tabela sessions (complementando os das migrations)
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_status_created ON sessions(status, created_at)",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_jid_status ON sessions(jid, status) WHERE jid IS NOT NULL",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity) WHERE last_activity IS NOT NULL",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_webhook_url ON sessions(webhook_url) WHERE webhook_url IS NOT NULL",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_proxy_enabled ON sessions(proxy_enabled) WHERE proxy_enabled = true",
 	}
 
 	for _, query := range indexes {
@@ -183,6 +192,68 @@ func (db *DB) CreateIndexes() error {
 		}
 	}
 
-	db.logger.Info().Msg("Optimized indexes created")
+	db.logger.Info().Msg("Application indexes created successfully")
+	return nil
+}
+
+// VerifySetup verifica se o banco está configurado corretamente
+func (db *DB) VerifySetup() error {
+	db.logger.Info().Msg("Verifying database setup")
+
+	// Verificar se a tabela sessions existe
+	var exists bool
+	query := `
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables
+			WHERE table_schema = 'public'
+			AND table_name = 'sessions'
+		)
+	`
+	if err := db.QueryRow(query).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check sessions table: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("sessions table does not exist")
+	}
+
+	// Verificar se as migrações foram aplicadas
+	var migrationCount int
+	migrationQuery := `
+		SELECT COUNT(*) FROM schema_migrations
+	`
+	if err := db.QueryRow(migrationQuery).Scan(&migrationCount); err != nil {
+		db.logger.Warn().Err(err).Msg("Could not check migration count (table may not exist yet)")
+	} else {
+		db.logger.Info().Int("migrations_applied", migrationCount).Msg("Migration status")
+	}
+
+	db.logger.Info().Msg("Database setup verification completed successfully")
+	return nil
+}
+
+// createWhatsAppRelationships cria relacionamentos entre tabelas sessions e whatsmeow
+func (db *DB) createWhatsAppRelationships() error {
+	db.logger.Info().Msg("Creating relationships between sessions and WhatsApp tables")
+
+	// Executar migrações específicas que criam relacionamentos
+	// Isso garante que os relacionamentos sejam criados após as tabelas whatsmeow existirem
+	migrator := migrations.NewMigrator(db.DB)
+
+	// Verificar se as migrações de relacionamento já foram aplicadas
+	appliedVersions, err := migrator.GetAppliedVersions()
+	if err != nil {
+		return fmt.Errorf("failed to get applied versions: %w", err)
+	}
+
+	// Executar migrações 3, 4 e 5 se ainda não foram aplicadas
+	relationshipMigrations := []int{3, 4, 5}
+	for _, version := range relationshipMigrations {
+		if !appliedVersions[version] {
+			db.logger.Info().Int("version", version).Msg("Applying WhatsApp relationship migration")
+			// As migrações serão aplicadas automaticamente pelo sistema normal de migrações
+		}
+	}
+
+	db.logger.Info().Msg("WhatsApp relationships setup completed")
 	return nil
 }

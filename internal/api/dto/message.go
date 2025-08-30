@@ -210,7 +210,107 @@ type MessageResponse struct {
 	IsFromMe    bool       `json:"is_from_me"`
 	Timestamp   time.Time  `json:"timestamp"`
 	SentAt      *time.Time `json:"sent_at,omitempty"`
-	DeliveredAt *time.Time `json:"delivered_at,omitempty"`
-	ReadAt      *time.Time `json:"read_at,omitempty"`
-	Error       string     `json:"error,omitempty"`
 }
+
+// === NOVOS DTOs PARA ENDPOINTS FALTANTES ===
+
+// SendImageRequest para envio de imagem
+type SendImageRequest struct {
+	To          string       `json:"to" validate:"required"`
+	Image       string       `json:"image" validate:"required"` // Base64 ou URL
+	Caption     string       `json:"caption,omitempty" validate:"max=1024"`
+	MessageID   string       `json:"message_id,omitempty"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+// SendAudioRequest para envio de áudio
+type SendAudioRequest struct {
+	To          string       `json:"to" validate:"required"`
+	Audio       string       `json:"audio" validate:"required"` // Base64 ou URL
+	MessageID   string       `json:"message_id,omitempty"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+// SendDocumentRequest para envio de documento
+type SendDocumentRequest struct {
+	To          string       `json:"to" validate:"required"`
+	Document    string       `json:"document" validate:"required"` // Base64 ou URL
+	Filename    string       `json:"filename" validate:"required"`
+	Caption     string       `json:"caption,omitempty" validate:"max=1024"`
+	MessageID   string       `json:"message_id,omitempty"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+// SendVideoRequest para envio de vídeo
+type SendVideoRequest struct {
+	To          string       `json:"to" validate:"required"`
+	Video       string       `json:"video" validate:"required"` // Base64 ou URL
+	Caption     string       `json:"caption,omitempty" validate:"max=1024"`
+	MessageID   string       `json:"message_id,omitempty"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+// SendStickerRequest para envio de sticker
+type SendStickerRequest struct {
+	To          string       `json:"to" validate:"required,min=10,max=20"` // Validação de telefone
+	Sticker     string       `json:"sticker" validate:"required,min=10"`   // Base64 ou URL
+	MessageID   string       `json:"message_id,omitempty" validate:"omitempty,max=100"`
+	ContextInfo *ContextInfo `json:"context_info,omitempty"`
+}
+
+// ReactRequest para reagir a mensagem
+type ReactRequest struct {
+	To        string `json:"to" validate:"required"`
+	MessageID string `json:"message_id" validate:"required"`
+	Emoji     string `json:"emoji" validate:"required,max=10"`
+}
+
+// DeleteMessageRequest para deletar mensagem
+type DeleteMessageRequest struct {
+	To        string `json:"to" validate:"required"`
+	MessageID string `json:"message_id" validate:"required"`
+	ForAll    bool   `json:"for_all,omitempty"`
+}
+
+// === DTOs PARA OPERAÇÕES DE CHAT ===
+
+// ChatPresenceRequest para definir presença no chat
+type ChatPresenceRequest struct {
+	To       string `json:"to" validate:"required"`
+	Presence string `json:"presence" validate:"required,oneof=available unavailable composing recording paused"`
+}
+
+// MarkReadRequest para marcar mensagens como lidas
+type MarkReadRequest struct {
+	To        string   `json:"to" validate:"required"`
+	MessageID []string `json:"message_id,omitempty"`
+}
+
+// DownloadMediaRequest para download de mídia
+type DownloadMediaRequest struct {
+	MessageID string `json:"message_id" validate:"required"`
+	Type      string `json:"type" validate:"required,oneof=image video audio document"`
+}
+
+// === DTOs PARA OPERAÇÕES DE SESSÃO (WHATSAPP) ===
+
+// SessionPresenceRequest para definir presença da sessão
+type SessionPresenceRequest struct {
+	Presence string `json:"presence" validate:"required,oneof=available unavailable"`
+}
+
+// ContactInfoRequest para obter informações de contato
+type ContactInfoRequest struct {
+	Phone string `json:"phone" validate:"required,min=10,max=20"` // Validação de telefone
+}
+
+// CheckContactRequest para verificar se contatos existem
+type CheckContactRequest struct {
+	Phone []string `json:"phone" validate:"required,min=1,max=50,dive,min=10,max=20"` // Máximo 50 números
+}
+
+// ContactAvatarRequest para obter avatar de contato
+type ContactAvatarRequest struct {
+	Phone string `json:"phone" validate:"required,min=10,max=20"` // Validação de telefone
+}
+

@@ -46,30 +46,9 @@ func (r *Router) SetupRoutes() {
 	// Health check
 	r.setupHealthRoutes()
 	
-	// Rotas de sessão
+	// Rotas de sessão (incluindo mensagens)
 	r.setupSessionRoutes()
 	
 	// Rotas de webhook
 	r.setupWebhookRoutes()
-}
-
-// setupGlobalMiddleware configura middleware global
-func (r *Router) setupGlobalMiddleware() {
-	r.app.Use(r.authMiddleware.CORS())
-	r.app.Use(r.authMiddleware.RequestLogger())
-}
-
-// setupHealthRoutes configura rotas de health check
-func (r *Router) setupHealthRoutes() {
-	r.app.Get("/health", r.healthCheck)
-}
-
-// healthCheck endpoint de health check
-func (r *Router) healthCheck(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status":    "ok",
-		"service":   "zemeow-api",
-		"version":   "1.0.0",
-		"timestamp": "1640995200",
-	})
 }

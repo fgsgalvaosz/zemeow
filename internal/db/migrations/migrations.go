@@ -7,6 +7,13 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
+// IMPORTANTE: As tabelas do WhatsApp (whatsmeow_*) são criadas e gerenciadas automaticamente
+// pela biblioteca go.mau.fi/whatsmeow/store/sqlstore através do método container.Upgrade().
+// Não é necessário criar essas tabelas manualmente nas migrações.
+//
+// Este sistema de migrações é apenas para as tabelas específicas da aplicação ZeMeow,
+// como a tabela 'sessions' e outras estruturas de dados da aplicação.
+
 // Migration representa uma migração do banco de dados
 type Migration struct {
 	Version     int
@@ -34,8 +41,12 @@ func (m *Migrator) GetMigrations() []Migration {
 	return []Migration{
 		{
 			Version:     1,
-			Description: "Create sessions table with whatsmeow store tables",
+			Description: "Create sessions table and basic structure",
 			Up: `
+				-- Criar extensões necessárias (PostgreSQL)
+				CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+				CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 				-- Criar tabela sessions
 				CREATE TABLE IF NOT EXISTS sessions (
 					id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,14 +67,14 @@ func (m *Migrator) GetMigrations() []Migration {
 					last_connected_at TIMESTAMP WITH TIME ZONE,
 					metadata JSONB DEFAULT '{}'
 				);
-				
+
 				-- Índices para performance
 				CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
 				CREATE INDEX IF NOT EXISTS idx_sessions_api_key ON sessions(api_key);
 				CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 				CREATE INDEX IF NOT EXISTS idx_sessions_jid ON sessions(jid);
 				CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
-				
+
 				-- Função para atualizar updated_at automaticamente
 				CREATE OR REPLACE FUNCTION update_updated_at_column()
 				RETURNS TRIGGER AS $$
@@ -72,152 +83,330 @@ func (m *Migrator) GetMigrations() []Migration {
 					RETURN NEW;
 				END;
 				$$ language 'plpgsql';
-				
+
 				-- Trigger para atualizar updated_at
 				DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
-				CREATE TRIGGER update_sessions_updated_at 
-					BEFORE UPDATE ON sessions 
-					FOR EACH ROW 
+				CREATE TRIGGER update_sessions_updated_at
+					BEFORE UPDATE ON sessions
+					FOR EACH ROW
 					EXECUTE FUNCTION update_updated_at_column();
-				
-				-- Tabelas do whatsmeow store (integração com go.mau.fi/whatsmeow/store/sqlstore)
-				CREATE TABLE IF NOT EXISTS whatsmeow_device (
-					jid TEXT PRIMARY KEY,
-					registration_id BIGINT NOT NULL CHECK (registration_id >= 0 AND registration_id < 4294967296),
-					noise_key BYTEA NOT NULL CHECK (length(noise_key) = 32),
-					identity_key BYTEA NOT NULL CHECK (length(identity_key) = 32),
-					signed_pre_key BYTEA NOT NULL,
-					signed_pre_key_id INTEGER NOT NULL CHECK (signed_pre_key_id >= 0 AND signed_pre_key_id < 16777216),
-					signed_pre_key_sig BYTEA NOT NULL CHECK (length(signed_pre_key_sig) = 64),
-					adv_key BYTEA NOT NULL,
-					adv_details BYTEA NOT NULL,
-					adv_account_sig BYTEA NOT NULL,
-					adv_account_sig_key BYTEA NOT NULL,
-					adv_device_sig BYTEA NOT NULL,
-					platform TEXT NOT NULL DEFAULT '',
-					business_name TEXT NOT NULL DEFAULT '',
-					push_name TEXT NOT NULL DEFAULT ''
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_identity_keys (
-					our_jid TEXT,
-					their_id TEXT,
-					identity BYTEA NOT NULL,
-					PRIMARY KEY (our_jid, their_id)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_pre_keys (
-					jid TEXT,
-					key_id INTEGER,
-					key BYTEA NOT NULL,
-					uploaded BOOLEAN NOT NULL,
-					PRIMARY KEY (jid, key_id)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_sender_keys (
-					our_jid TEXT,
-					chat_id TEXT,
-					sender_id TEXT,
-					sender_key BYTEA NOT NULL,
-					PRIMARY KEY (our_jid, chat_id, sender_id)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_sync_keys (
-					jid TEXT,
-					key_id BYTEA,
-					key_data BYTEA NOT NULL,
-					timestamp BIGINT NOT NULL,
-					fingerprint BYTEA NOT NULL,
-					PRIMARY KEY (jid, key_id)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_version (
-					jid TEXT,
-					name TEXT,
-					version BIGINT NOT NULL,
-					hash BYTEA NOT NULL,
-					PRIMARY KEY (jid, name)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_app_state_mutation_macs (
-					jid TEXT,
-					name TEXT,
-					version BIGINT,
-					index_mac BYTEA,
-					value_mac BYTEA,
-					PRIMARY KEY (jid, name, version, index_mac)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_contacts (
-					our_jid TEXT,
-					their_jid TEXT,
-					first_name TEXT,
-					full_name TEXT,
-					push_name TEXT,
-					business_name TEXT,
-					PRIMARY KEY (our_jid, their_jid)
-				);
-				
-				CREATE TABLE IF NOT EXISTS whatsmeow_chat_settings (
-					our_jid TEXT,
-					chat_jid TEXT,
-					muted_until BIGINT NOT NULL DEFAULT 0,
-					pinned BOOLEAN NOT NULL DEFAULT false,
-					archived BOOLEAN NOT NULL DEFAULT false,
-					PRIMARY KEY (our_jid, chat_jid)
-				);
 			`,
 			Down: `
 				DROP TRIGGER IF EXISTS update_sessions_updated_at ON sessions;
 				DROP FUNCTION IF EXISTS update_updated_at_column();
-				DROP TABLE IF EXISTS whatsmeow_chat_settings;
-				DROP TABLE IF EXISTS whatsmeow_contacts;
-				DROP TABLE IF EXISTS whatsmeow_app_state_mutation_macs;
-				DROP TABLE IF EXISTS whatsmeow_app_state_version;
-				DROP TABLE IF EXISTS whatsmeow_app_state_sync_keys;
-				DROP TABLE IF EXISTS whatsmeow_sender_keys;
-				DROP TABLE IF EXISTS whatsmeow_pre_keys;
-				DROP TABLE IF EXISTS whatsmeow_identity_keys;
-				DROP TABLE IF EXISTS whatsmeow_device;
 				DROP TABLE IF EXISTS sessions;
 			`,
 		},
 		{
 			Version:     2,
-			Description: "Create migrations table",
-			Up: `
-				-- Tabela para controlar migrações
-				CREATE TABLE IF NOT EXISTS schema_migrations (
-					version INTEGER PRIMARY KEY,
-					description TEXT NOT NULL,
-					applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-				);
-			`,
-			Down: `
-				DROP TABLE IF EXISTS schema_migrations;
-			`,
-		},
-		{
-			Version:     3,
 			Description: "Add session statistics columns",
 			Up: `
 				-- Adicionar colunas de estatísticas
-				ALTER TABLE sessions 
+				ALTER TABLE sessions
 				ADD COLUMN IF NOT EXISTS messages_received INTEGER DEFAULT 0,
 				ADD COLUMN IF NOT EXISTS messages_sent INTEGER DEFAULT 0,
 				ADD COLUMN IF NOT EXISTS reconnections INTEGER DEFAULT 0,
 				ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP WITH TIME ZONE;
-				
+
 				-- Índice para last_activity
 				CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity);
 			`,
 			Down: `
 				DROP INDEX IF EXISTS idx_sessions_last_activity;
-				ALTER TABLE sessions 
+				ALTER TABLE sessions
 				DROP COLUMN IF EXISTS messages_received,
 				DROP COLUMN IF EXISTS messages_sent,
 				DROP COLUMN IF EXISTS reconnections,
 				DROP COLUMN IF EXISTS last_activity;
+			`,
+		},
+		{
+			Version:     3,
+			Description: "Create relationships between sessions and whatsmeow tables",
+			Up: `
+				-- Esta migração cria relacionamentos entre sessions e tabelas whatsmeow
+				-- As tabelas whatsmeow são criadas automaticamente pelo container.Upgrade()
+
+				-- Função para criar relacionamentos de forma segura
+				CREATE OR REPLACE FUNCTION create_whatsmeow_relationships() RETURNS void AS $$
+				BEGIN
+					-- Foreign key da sessions para whatsmeow_device (se existir)
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_device') THEN
+						-- Adicionar constraint apenas se não existir
+						IF NOT EXISTS (
+							SELECT 1 FROM information_schema.table_constraints
+							WHERE constraint_name = 'fk_sessions_whatsmeow_device'
+						) THEN
+							ALTER TABLE sessions
+							ADD CONSTRAINT fk_sessions_whatsmeow_device
+							FOREIGN KEY (jid) REFERENCES whatsmeow_device(jid)
+							ON DELETE CASCADE ON UPDATE CASCADE;
+						END IF;
+					END IF;
+				END;
+				$$ LANGUAGE plpgsql;
+
+				-- Executar a função
+				SELECT create_whatsmeow_relationships();
+
+				-- Limpar função temporária
+				DROP FUNCTION IF EXISTS create_whatsmeow_relationships();
+			`,
+			Down: `
+				-- Remover foreign key
+				ALTER TABLE sessions DROP CONSTRAINT IF EXISTS fk_sessions_whatsmeow_device;
+			`,
+		},
+		{
+			Version:     4,
+			Description: "Create optimized indexes for whatsmeow tables",
+			Up: `
+				-- Esta migração cria índices otimizados para as tabelas whatsmeow
+				-- Executa apenas se as tabelas existirem
+
+				-- Função para criar índices de forma segura
+				CREATE OR REPLACE FUNCTION create_whatsmeow_indexes() RETURNS void AS $$
+				BEGIN
+					-- Índices para whatsmeow_device
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_device') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_device_jid_lookup ON whatsmeow_device(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_device_registration ON whatsmeow_device(registration_id);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_device_platform ON whatsmeow_device(platform) WHERE platform != '';
+					END IF;
+
+					-- Índices para whatsmeow_identity_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_identity_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_identity_our_jid ON whatsmeow_identity_keys(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_identity_their_id ON whatsmeow_identity_keys(their_id);
+					END IF;
+
+					-- Índices para whatsmeow_pre_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_pre_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_jid ON whatsmeow_pre_keys(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_uploaded ON whatsmeow_pre_keys(jid, uploaded);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_key_id ON whatsmeow_pre_keys(jid, key_id);
+					END IF;
+
+					-- Índices para whatsmeow_sender_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_sender_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sender_our_jid ON whatsmeow_sender_keys(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sender_chat ON whatsmeow_sender_keys(our_jid, chat_id);
+					END IF;
+				END;
+				$$ LANGUAGE plpgsql;
+
+				-- Executar a função
+				SELECT create_whatsmeow_indexes();
+
+				-- Limpar função temporária
+				DROP FUNCTION IF EXISTS create_whatsmeow_indexes();
+			`,
+			Down: `
+				-- Remover índices criados
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_device_jid_lookup;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_device_registration;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_device_platform;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_identity_our_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_identity_their_id;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_prekeys_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_prekeys_uploaded;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_prekeys_key_id;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_sender_our_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_sender_chat;
+			`,
+		},
+		{
+			Version:     5,
+			Description: "Create indexes for whatsmeow app state and contacts tables",
+			Up: `
+				-- Índices para tabelas de app state e contatos do whatsmeow
+
+				-- Função para criar índices de app state
+				CREATE OR REPLACE FUNCTION create_whatsmeow_appstate_indexes() RETURNS void AS $$
+				BEGIN
+					-- Índices para whatsmeow_app_state_sync_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_sync_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sync_keys_jid ON whatsmeow_app_state_sync_keys(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sync_keys_timestamp ON whatsmeow_app_state_sync_keys(jid, timestamp);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sync_keys_fingerprint ON whatsmeow_app_state_sync_keys(fingerprint);
+					END IF;
+
+					-- Índices para whatsmeow_app_state_version
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_version') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_version_jid ON whatsmeow_app_state_version(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_version_name ON whatsmeow_app_state_version(jid, name);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_version_version ON whatsmeow_app_state_version(version);
+					END IF;
+
+					-- Índices para whatsmeow_app_state_mutation_macs
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_mutation_macs') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_mutation_jid ON whatsmeow_app_state_mutation_macs(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_mutation_name ON whatsmeow_app_state_mutation_macs(jid, name);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_mutation_version ON whatsmeow_app_state_mutation_macs(jid, name, version);
+					END IF;
+
+					-- Índices para whatsmeow_contacts
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_contacts') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_our_jid ON whatsmeow_contacts(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_their_jid ON whatsmeow_contacts(their_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_names ON whatsmeow_contacts(our_jid, first_name, full_name);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_push_name ON whatsmeow_contacts(our_jid, push_name) WHERE push_name != '';
+					END IF;
+
+					-- Índices para whatsmeow_chat_settings
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_chat_settings') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_our_jid ON whatsmeow_chat_settings(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_settings ON whatsmeow_chat_settings(our_jid, chat_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_muted ON whatsmeow_chat_settings(our_jid, muted_until) WHERE muted_until > 0;
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_pinned ON whatsmeow_chat_settings(our_jid, pinned) WHERE pinned = true;
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_archived ON whatsmeow_chat_settings(our_jid, archived) WHERE archived = true;
+					END IF;
+				END;
+				$$ LANGUAGE plpgsql;
+
+				-- Executar a função
+				SELECT create_whatsmeow_appstate_indexes();
+
+				-- Limpar função temporária
+				DROP FUNCTION IF EXISTS create_whatsmeow_appstate_indexes();
+			`,
+			Down: `
+				-- Remover índices de app state e contatos
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_sync_keys_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_sync_keys_timestamp;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_sync_keys_fingerprint;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_version_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_version_name;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_version_version;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_mutation_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_mutation_name;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_mutation_version;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_contacts_our_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_contacts_their_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_contacts_names;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_contacts_push_name;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_chat_our_jid;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_chat_settings;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_chat_muted;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_chat_pinned;
+				DROP INDEX CONCURRENTLY IF EXISTS idx_whatsmeow_chat_archived;
+			`,
+		},
+		{
+			Version:     3,
+			Description: "Create relationships and indexes between sessions and whatsmeow tables",
+			Up: `
+				-- Aguardar que as tabelas do whatsmeow sejam criadas pelo upgrade automático
+				-- Esta migração será executada após o container.Upgrade() do whatsmeow
+
+				-- Adicionar foreign keys e relacionamentos após as tabelas existirem
+				-- Função para criar relacionamentos de forma segura
+				CREATE OR REPLACE FUNCTION create_whatsmeow_relationships() RETURNS void AS $$
+				BEGIN
+					-- Verificar se as tabelas do whatsmeow existem antes de criar relacionamentos
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_device') THEN
+						-- Foreign key da sessions para whatsmeow_device
+						IF NOT EXISTS (
+							SELECT 1 FROM information_schema.table_constraints
+							WHERE constraint_name = 'fk_sessions_whatsmeow_device'
+						) THEN
+							ALTER TABLE sessions
+							ADD CONSTRAINT fk_sessions_whatsmeow_device
+							FOREIGN KEY (jid) REFERENCES whatsmeow_device(jid)
+							ON DELETE CASCADE ON UPDATE CASCADE;
+						END IF;
+
+						-- Índices otimizados para whatsmeow_device
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_device_jid_lookup ON whatsmeow_device(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_device_registration ON whatsmeow_device(registration_id);
+					END IF;
+
+					-- Índices para whatsmeow_identity_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_identity_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_identity_our_jid ON whatsmeow_identity_keys(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_identity_their_id ON whatsmeow_identity_keys(their_id);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_identity_composite ON whatsmeow_identity_keys(our_jid, their_id);
+					END IF;
+
+					-- Índices para whatsmeow_pre_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_pre_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_jid ON whatsmeow_pre_keys(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_uploaded ON whatsmeow_pre_keys(jid, uploaded);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_prekeys_key_id ON whatsmeow_pre_keys(jid, key_id);
+					END IF;
+
+					-- Índices para whatsmeow_sender_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_sender_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sender_our_jid ON whatsmeow_sender_keys(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sender_chat ON whatsmeow_sender_keys(our_jid, chat_id);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sender_composite ON whatsmeow_sender_keys(our_jid, chat_id, sender_id);
+					END IF;
+
+					-- Índices para whatsmeow_app_state_sync_keys
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_sync_keys') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sync_keys_jid ON whatsmeow_app_state_sync_keys(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_sync_keys_timestamp ON whatsmeow_app_state_sync_keys(jid, timestamp);
+					END IF;
+
+					-- Índices para whatsmeow_app_state_version
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_version') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_version_jid ON whatsmeow_app_state_version(jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_version_name ON whatsmeow_app_state_version(jid, name);
+					END IF;
+
+					-- Índices para whatsmeow_contacts
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_contacts') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_our_jid ON whatsmeow_contacts(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_their_jid ON whatsmeow_contacts(their_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_contacts_names ON whatsmeow_contacts(our_jid, first_name, full_name);
+					END IF;
+
+					-- Índices para whatsmeow_chat_settings
+					IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'whatsmeow_chat_settings') THEN
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_our_jid ON whatsmeow_chat_settings(our_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_settings ON whatsmeow_chat_settings(our_jid, chat_jid);
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_muted ON whatsmeow_chat_settings(our_jid, muted_until) WHERE muted_until > 0;
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_pinned ON whatsmeow_chat_settings(our_jid, pinned) WHERE pinned = true;
+						CREATE INDEX IF NOT EXISTS idx_whatsmeow_chat_archived ON whatsmeow_chat_settings(our_jid, archived) WHERE archived = true;
+					END IF;
+
+				END;
+				$$ LANGUAGE plpgsql;
+
+				-- Executar a função para criar os relacionamentos
+				SELECT create_whatsmeow_relationships();
+
+				-- Remover a função após uso
+				DROP FUNCTION IF EXISTS create_whatsmeow_relationships();
+			`,
+			Down: `
+				-- Remover foreign keys
+				ALTER TABLE sessions DROP CONSTRAINT IF EXISTS fk_sessions_whatsmeow_device;
+
+				-- Remover índices criados
+				DROP INDEX IF EXISTS idx_whatsmeow_device_jid_lookup;
+				DROP INDEX IF EXISTS idx_whatsmeow_device_registration;
+				DROP INDEX IF EXISTS idx_whatsmeow_identity_our_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_identity_their_id;
+				DROP INDEX IF EXISTS idx_whatsmeow_identity_composite;
+				DROP INDEX IF EXISTS idx_whatsmeow_prekeys_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_prekeys_uploaded;
+				DROP INDEX IF EXISTS idx_whatsmeow_prekeys_key_id;
+				DROP INDEX IF EXISTS idx_whatsmeow_sender_our_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_sender_chat;
+				DROP INDEX IF EXISTS idx_whatsmeow_sender_composite;
+				DROP INDEX IF EXISTS idx_whatsmeow_sync_keys_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_sync_keys_timestamp;
+				DROP INDEX IF EXISTS idx_whatsmeow_version_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_version_name;
+				DROP INDEX IF EXISTS idx_whatsmeow_contacts_our_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_contacts_their_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_contacts_names;
+				DROP INDEX IF EXISTS idx_whatsmeow_chat_our_jid;
+				DROP INDEX IF EXISTS idx_whatsmeow_chat_settings;
+				DROP INDEX IF EXISTS idx_whatsmeow_chat_muted;
+				DROP INDEX IF EXISTS idx_whatsmeow_chat_pinned;
+				DROP INDEX IF EXISTS idx_whatsmeow_chat_archived;
 			`,
 		},
 	}
@@ -387,4 +576,9 @@ type MigrationStatus struct {
 	Version     int    `json:"version"`
 	Description string `json:"description"`
 	Applied     bool   `json:"applied"`
+}
+
+// GetAppliedVersions retorna as versões de migração já aplicadas (método público)
+func (m *Migrator) GetAppliedVersions() (map[int]bool, error) {
+	return m.getAppliedVersions()
 }

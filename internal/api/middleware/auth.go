@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/gofiber/fiber/v2"
@@ -27,7 +28,7 @@ type SessionInfo struct {
 	Name      string `json:"name"`
 	JID       string `json:"jid"`
 	Webhook   string `json:"webhook"`
-	Token     string `json:"token"`
+	// Token     string `json:"token"`  // Removendo a referência ao token
 	Proxy     string `json:"proxy"`
 	Events    string `json:"events"`
 	QRCode    string `json:"qrcode"`
@@ -227,93 +228,114 @@ func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 	}
 }
 
-// min função auxiliar para obter o menor valor
+// SessionInfoMiddleware middleware que adiciona informações da sessão ao contexto
+func (am *AuthMiddleware) SessionInfoMiddleware() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Verificar se há contexto de autenticação
+		auth := GetAuthContext(c)
+		if auth == nil {
+			return c.Next()
+		}
+
+		// Se for global key, não há sessão específica
+		if auth.IsGlobalKey {
+			return c.Next()
+		}
+
+		// Obter sessão do contexto
+		sessionInterface := c.Locals("session")
+		if sessionInterface == nil {
+			return c.Next()
+		}
+
+		session, ok := sessionInterface.(*models.Session)
+		if !ok {
+			return c.Next()
+		}
+
+		// Criar SessionInfo
+		info := &SessionInfo{
+			ID:        session.ID.String(),
+			SessionID: session.SessionID,
+			Name:      session.Name,
+		}
+
+		// Preencher campos opcionais
+		if session.JID != nil {
+			info.JID = *session.JID
+		}
+
+		if session.WebhookURL != nil {
+			info.Webhook = *session.WebhookURL
+		}
+
+		// if session.Token != "" {  // Removendo a referência ao token
+		// 	info.Token = session.Token
+		// }
+
+		if session.ProxyHost != nil && session.ProxyPort != nil {
+			info.Proxy = fmt.Sprintf("%s:%d", *session.ProxyHost, *session.ProxyPort)
+		}
+
+		if len(session.WebhookEvents) > 0 {
+			info.Events = strings.Join(session.WebhookEvents, ",")
+		}
+
+		// Adicionar ao contexto
+		c.Locals("sessioninfo", info)
+		return c.Next()
+	}
+}
+
+// CORS retorna o middleware CORS
+func (am *AuthMiddleware) CORS() fiber.Handler {
+	return am.CORSMiddleware()
+}
+
+// CORSMiddleware configura CORS
+func (am *AuthMiddleware) CORSMiddleware() fiber.Handler {
+	return cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization,apikey,X-API-Key",
+	})
+}
+
+// RateLimiterMiddleware limita requisições
+func (am *AuthMiddleware) RateLimiterMiddleware() fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        60, // 60 requisições
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			// Usar IP + API Key como chave
+			ip := c.IP()
+			apiKey := am.extractAPIKey(c)
+			if apiKey != "" {
+				return ip + ":" + apiKey
+			}
+			return ip
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error":   "RATE_LIMIT_EXCEEDED",
+				"message": "Too many requests - rate limit exceeded",
+			})
+		},
+	})
+}
+
+// RequestLogger retorna o middleware de logger de requisições
+func (am *AuthMiddleware) RequestLogger() fiber.Handler {
+	// TODO: Implementar logger de requisições
+	return func(c *fiber.Ctx) error {
+		return c.Next()
+	}
+}
+
+// Helper function para min
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
-}
-
-// RequestLogger middleware com suporte a sessionID
-func (am *AuthMiddleware) RequestLogger() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		// Processar request
-		start := time.Now()
-		err := c.Next()
-		latency := time.Since(start)
-
-		// Obter informações da sessão se disponível
-		sessionID := "anonymous"
-		if sessionInfo := GetSessionInfo(c); sessionInfo != nil {
-			sessionID = sessionInfo.SessionID
-		} else if auth := GetAuthContext(c); auth != nil {
-			if auth.IsGlobalKey {
-				sessionID = "global"
-			} else if auth.SessionID != "" {
-				sessionID = auth.SessionID
-			}
-		}
-
-		// Log estruturado
-		logEvent := am.logger.Info().
-			Str("method", c.Method()).
-			Str("path", c.Path()).
-			Str("session_id", sessionID).
-			Int("status", c.Response().StatusCode()).
-			Dur("latency", latency).
-			Str("ip", c.IP()).
-			Str("user_agent", c.Get("User-Agent"))
-
-		if err != nil {
-			logEvent = am.logger.Error().Err(err)
-		}
-
-		logEvent.Msg("HTTP Request")
-
-		return err
-	}
-}
-
-// RateLimit middleware com base em sessionID
-func (am *AuthMiddleware) RateLimit(max int) fiber.Handler {
-	return limiter.New(limiter.Config{
-		Max:        max,
-		Expiration: 1 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			// Usar sessionID se disponível, senão IP
-			if sessionInfo := GetSessionInfo(c); sessionInfo != nil {
-				return fmt.Sprintf("session:%s", sessionInfo.SessionID)
-			}
-			if auth := GetAuthContext(c); auth != nil {
-				if auth.IsGlobalKey {
-					return "global"
-				}
-				return fmt.Sprintf("token:%s", auth.APIKey[:min(10, len(auth.APIKey))])
-			}
-			return fmt.Sprintf("ip:%s", c.IP())
-		},
-			LimitReached: func(c *fiber.Ctx) error {
-				am.logger.Warn().
-					Str("ip", c.IP()).
-					Str("path", c.Path()).
-					Msg("Rate limit exceeded")
-				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-					"error":   "RATE_LIMIT_EXCEEDED",
-					"message": "Too many requests, please try again later",
-				})
-			},
-		})
-	}
-
-// CORS middleware com suporte aos headers de API key
-func (am *AuthMiddleware) CORS() fiber.Handler {
-	return cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-API-Key,apikey",
-		ExposeHeaders:    "Content-Length",
-		AllowCredentials: false,
-		MaxAge:           86400, // 24 hours
-	})
 }

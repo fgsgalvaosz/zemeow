@@ -2,23 +2,21 @@ package meow
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/lib/pq"
-	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
-// WhatsAppManager gerencia múltiplas sessões WhatsApp de forma thread-safe
+// WhatsAppManager gerencia múltiplas sessões WhatsApp de baixo nível
 type WhatsAppManager struct {
 	mu          sync.RWMutex
 	clients     map[string]*MyClient
@@ -32,41 +30,9 @@ type WhatsAppManager struct {
 	webhookChan chan WebhookEvent
 }
 
-// WebhookEvent representa um evento para webhook
-type WebhookEvent struct {
-	SessionID string      `json:"session_id"`
-	Event     string      `json:"event"`
-	Data      interface{} `json:"data"`
-	Timestamp time.Time   `json:"timestamp"`
-}
-
-// QRCodeData representa os dados do QR Code
-type QRCodeData struct {
-	Code      string    `json:"code"`
-	Timeout   int       `json:"timeout"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-// ConnectionInfo representa informações de conexão
-type ConnectionInfo struct {
-	JID          string    `json:"jid"`
-	PushName     string    `json:"push_name"`
-	BusinessName string    `json:"business_name,omitempty"`
-	ConnectedAt  time.Time `json:"connected_at"`
-	LastSeen     time.Time `json:"last_seen"`
-	BatteryLevel int       `json:"battery_level,omitempty"`
-	Plugged      bool      `json:"plugged,omitempty"`
-}
-
-// NewWhatsAppManager cria uma nova instância do gerenciador
-func NewWhatsAppManager(db *sql.DB, repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
+// NewWhatsAppManager cria um novo gerenciador de sessões WhatsApp
+func NewWhatsAppManager(container *sqlstore.Container, repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Criar logger para whatsmeow
-	whatsmeowLogger := logger.GetWhatsAppLogger("store")
-
-	// Criar container do sqlstore
-	container := sqlstore.NewWithDB(db, "postgres", whatsmeowLogger)
 
 	return &WhatsAppManager{
 		clients:     make(map[string]*MyClient),
@@ -77,64 +43,75 @@ func NewWhatsAppManager(db *sql.DB, repository repositories.SessionRepository, c
 		logger:      logger.GetWithSession("whatsapp_manager"),
 		ctx:         ctx,
 		cancel:      cancel,
-		webhookChan: make(chan WebhookEvent, 1000),
+		webhookChan: make(chan WebhookEvent, 100),
 	}
 }
 
-// Start inicia o gerenciador e carrega sessões ativas
+// Start inicia o gerenciador de sessões WhatsApp
 func (m *WhatsAppManager) Start() error {
-	m.logger.Info().Msg("Starting WhatsApp Manager")
+	m.logger.Info().Msg("Starting WhatsApp manager")
 
-	// Fazer upgrade das tabelas do whatsmeow se necessário
-	if err := m.container.Upgrade(); err != nil {
-		m.logger.Error().Err(err).Msg("Failed to upgrade whatsmeow store")
-		return fmt.Errorf("failed to upgrade whatsmeow store: %w", err)
-	}
-
-	// Carregar sessões ativas do banco
-	activeSessions, err := m.repository.GetActiveConnections()
+	// Carregar sessões existentes do banco
+	sessions, err := m.repository.GetAll(nil)
 	if err != nil {
-		m.logger.Error().Err(err).Msg("Failed to load active sessions")
-		return fmt.Errorf("failed to load active sessions: %w", err)
+		return fmt.Errorf("failed to load sessions: %w", err)
 	}
-
-	// Inicializar sessões ativas
-	for _, session := range activeSessions {
-		if err := m.initializeSession(session); err != nil {
-			m.logger.Error().Err(err).Str("session_id", session.SessionID).Msg("Failed to initialize session")
-			// Atualizar status para disconnected se falhar
-			m.repository.UpdateStatus(session.SessionID, models.SessionStatusDisconnected)
-		}
-	}
-
-	// Iniciar processamento de webhooks
-	go m.processWebhooks()
-
-	m.logger.Info().Int("active_sessions", len(activeSessions)).Msg("WhatsApp Manager started")
-	return nil
-}
-
-// Stop para o gerenciador e desconecta todas as sessões
-func (m *WhatsAppManager) Stop() {
-	m.logger.Info().Msg("Stopping WhatsApp Manager")
-
-	m.cancel()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Desconectar todos os clientes
-	for sessionID, client := range m.clients {
-		client.Disconnect()
-		m.logger.Info().Str("session_id", sessionID).Msg("Session disconnected")
+	// Inicializar sessões
+	for _, session := range sessions.Sessions {
+		if err := m.initializeSession(&session); err != nil {
+			m.logger.Warn().Err(err).Str("session_id", session.SessionID).Msg("Failed to initialize session")
+			continue
+		}
+		m.logger.Info().Str("session_id", session.SessionID).Msg("Session initialized")
 	}
 
-	// Limpar maps
-	m.clients = make(map[string]*MyClient)
-	m.sessions = make(map[string]*models.Session)
+	m.logger.Info().Int("session_count", len(m.sessions)).Msg("WhatsApp manager started successfully")
+	return nil
+}
 
-	close(m.webhookChan)
-	m.logger.Info().Msg("WhatsApp Manager stopped")
+// Stop para o gerenciador de sessões WhatsApp
+func (m *WhatsAppManager) Stop() {
+	m.logger.Info().Msg("Stopping WhatsApp manager")
+
+	// Cancelar contexto
+	m.cancel()
+
+	// Desconectar todos os clientes
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for sessionID, client := range m.clients {
+		m.logger.Info().Str("session_id", sessionID).Msg("Disconnecting client")
+		client.Disconnect()
+	}
+
+	m.logger.Info().Msg("WhatsApp manager stopped")
+}
+
+// initializeSession inicializa uma sessão a partir do banco de dados
+func (m *WhatsAppManager) initializeSession(session *models.Session) error {
+	// Obter device store
+	deviceStore, err := m.container.GetFirstDevice()
+	if err != nil {
+		// Criar novo device se não existir
+		deviceStore = m.container.NewDevice()
+	}
+
+	// Criar cliente WhatsApp
+	client := NewMyClient(session.SessionID, deviceStore, m.webhookChan)
+
+	// Registrar handlers
+	m.registerClientHandlers(client, session.SessionID)
+
+	// Armazenar na memória
+	m.sessions[session.SessionID] = session
+	m.clients[session.SessionID] = client
+
+	return nil
 }
 
 // CreateSession cria uma nova sessão WhatsApp
@@ -152,7 +129,7 @@ func (m *WhatsAppManager) CreateSession(sessionID string, config *models.Session
 		ID:        uuid.New(),
 		SessionID: sessionID,
 		Name:      config.Name,
-		Token:     uuid.New().String(),
+		// Token:     uuid.New().String(),  // Removendo a referência ao token
 		Status:    models.SessionStatusDisconnected,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -349,107 +326,11 @@ func (m *WhatsAppManager) ListSessions() map[string]*models.Session {
 	for k, v := range m.sessions {
 		result[k] = v
 	}
-
 	return result
 }
 
-// IsSessionActive verifica se uma sessão está ativa
-func (m *WhatsAppManager) IsSessionActive(sessionID string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	client, exists := m.clients[sessionID]
-	return exists && client.IsConnected()
-}
-
-// GetSessionQRCode obtém o QR Code de uma sessão
-func (m *WhatsAppManager) GetSessionQRCode(sessionID string) (*QRCodeData, error) {
-	m.mu.RLock()
-	client, exists := m.clients[sessionID]
-	m.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	if client.IsLoggedIn() {
-		return nil, fmt.Errorf("session is already logged in")
-	}
-
-	// Iniciar processo de QR Code (whatsmeow gerará evento QR)
-	if !client.IsConnected() {
-		if err := client.Connect(); err != nil {
-			return nil, fmt.Errorf("failed to connect for QR code: %w", err)
-		}
-	}
-
-	// O QR Code será enviado via webhook quando gerado
-	return &QRCodeData{
-		Code:      "qr_generation_initiated",
-		Timeout:   60,
-		Timestamp: time.Now(),
-	}, nil
-}
-
-
-
-// initializeSession inicializa uma sessão WhatsApp
-func (m *WhatsAppManager) initializeSession(session *models.Session) error {
-	// Obter device store
-	deviceStore, err := m.container.GetFirstDevice()
-	if err != nil {
-		// Criar novo device se não existir
-		deviceStore = m.container.NewDevice()
-	}
-
-	// Criar MyClient personalizado
-	myClient := NewMyClient(session.SessionID, deviceStore, m.webhookChan)
-
-	// Armazenar na memória
-	m.clients[session.SessionID] = myClient
-	m.sessions[session.SessionID] = session
-
-	m.logger.Info().Str("session_id", session.SessionID).Msg("Session initialized")
-	return nil
-}
-
-// sendWebhook envia um evento para o canal de webhooks
-func (m *WhatsAppManager) sendWebhook(sessionID, event string, data interface{}) {
-	select {
-	case m.webhookChan <- WebhookEvent{
-		SessionID: sessionID,
-		Event:     event,
-		Data:      data,
-		Timestamp: time.Now(),
-	}:
-	default:
-		m.logger.Warn().Str("session_id", sessionID).Str("event", event).Msg("Webhook channel full, dropping event")
-	}
-}
-
-// processWebhooks processa eventos de webhook em background
-func (m *WhatsAppManager) processWebhooks() {
-	m.logger.Info().Msg("Starting webhook processor")
-
-	for {
-		select {
-		case event, ok := <-m.webhookChan:
-			if !ok {
-				m.logger.Info().Msg("Webhook processor stopped")
-				return
-			}
-
-			// TODO: Implementar envio real de webhook
-			m.logger.Debug().Str("session_id", event.SessionID).Str("event", event.Event).Msg("Processing webhook event")
-
-		case <-m.ctx.Done():
-			m.logger.Info().Msg("Webhook processor stopped by context")
-			return
-		}
-	}
-}
-
-// GetWebhookChannel retorna o canal de webhooks para processamento externo
-func (m *WhatsAppManager) GetWebhookChannel() <-chan WebhookEvent {
-	return m.webhookChan
+// registerClientHandlers registra handlers para eventos do cliente
+func (m *WhatsAppManager) registerClientHandlers(client *MyClient, sessionID string) {
+	// Os handlers são registrados no próprio MyClient através do setupDefaultEventHandlers
+	// Nenhuma ação adicional necessária aqui
 }

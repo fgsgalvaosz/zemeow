@@ -93,7 +93,7 @@ func (m *Manager) CreateSession(sessionID string, name string, token string) (*m
 		ID:        uuid.New(),
 		SessionID: sessionID,
 		Name:      name,
-		Token:     token,
+		// Token:     token,  // Removendo a referência ao token
 		Status:    models.SessionStatusDisconnected,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),

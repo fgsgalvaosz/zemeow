@@ -54,9 +54,10 @@ func NewServer(
 	})
 
 	// Criar handlers
-	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service))
-	messageHandler := handlers.NewMessageHandler()
+	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service), sessionRepo)
+	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service))
 	webhookHandler := handlers.NewWebhookHandler()
+	groupHandler := handlers.NewGroupHandler(sessionService.(session.Service))
 
 	// Criar middleware de autenticação
 	authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
@@ -67,6 +68,7 @@ func NewServer(
 		SessionHandler: sessionHandler,
 		MessageHandler: messageHandler,
 		WebhookHandler: webhookHandler,
+		GroupHandler:   groupHandler,
 	}
 	router := routes.NewRouter(app, routerConfig)
 
@@ -82,10 +84,10 @@ func NewServer(
 func (s *Server) SetupRoutes() {
 	// Middleware global de recuperação de pânico
 	s.app.Use(recover.New())
-	
+
 	// Configurar rotas usando o router modular
 	s.router.SetupRoutes()
-	
+
 	s.logger.Info().Msg("API routes configured successfully")
 }
 

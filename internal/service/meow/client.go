@@ -13,6 +13,32 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
+// WebhookEvent representa um evento para webhook
+type WebhookEvent struct {
+	SessionID string      `json:"session_id"`
+	Event     string      `json:"event"`
+	Data      interface{} `json:"data"`
+	Timestamp time.Time   `json:"timestamp"`
+}
+
+// QRCodeData representa os dados do QR Code
+type QRCodeData struct {
+	Code      string    `json:"code"`
+	Timeout   int       `json:"timeout"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// ConnectionInfo representa informações de conexão
+type ConnectionInfo struct {
+	JID          string    `json:"jid"`
+	PushName     string    `json:"push_name"`
+	BusinessName string    `json:"business_name,omitempty"`
+	ConnectedAt  time.Time `json:"connected_at"`
+	LastSeen     time.Time `json:"last_seen"`
+	BatteryLevel int       `json:"battery_level,omitempty"`
+	Plugged      bool      `json:"plugged,omitempty"`
+}
+
 // MyClient representa um cliente WhatsApp personalizado para uma sessão
 type MyClient struct {
 	mu            sync.RWMutex

@@ -14,11 +14,11 @@ import (
 type SessionStatus string
 
 const (
-	SessionStatusDisconnected SessionStatus = "disconnected"
-	SessionStatusConnecting   SessionStatus = "connecting"
-	SessionStatusConnected    SessionStatus = "connected"
+	SessionStatusDisconnected  SessionStatus = "disconnected"
+	SessionStatusConnecting    SessionStatus = "connecting"
+	SessionStatusConnected     SessionStatus = "connected"
 	SessionStatusAuthenticated SessionStatus = "authenticated"
-	SessionStatusError        SessionStatus = "error"
+	SessionStatusError         SessionStatus = "error"
 )
 
 // Session representa uma sessão WhatsApp no banco de dados
@@ -27,7 +27,7 @@ type Session struct {
 	SessionID       string         `json:"session_id" db:"session_id"`
 	Name            string         `json:"name" db:"name"`
 	APIKey          string         `json:"api_key" db:"api_key"`
-	Token           string         `json:"token" db:"token"`
+	// Token           string         `json:"token" db:"token"`  // Removendo a coluna token
 	JID             *string        `json:"jid,omitempty" db:"jid"`
 	Status          SessionStatus  `json:"status" db:"status"`
 	ProxyEnabled    bool           `json:"proxy_enabled" db:"proxy_enabled"`
@@ -45,12 +45,12 @@ type Session struct {
 
 // SessionConfig representa a configuração de uma sessão
 type SessionConfig struct {
-	SessionID     string        `json:"session_id"`
-	Name          string        `json:"name"`
-	Proxy         *ProxyConfig  `json:"proxy,omitempty"`
+	SessionID     string         `json:"session_id"`
+	Name          string         `json:"name"`
+	Proxy         *ProxyConfig   `json:"proxy,omitempty"`
 	Webhook       *WebhookConfig `json:"webhook,omitempty"`
-	AutoReconnect bool          `json:"auto_reconnect"`
-	Timeout       time.Duration `json:"timeout"`
+	AutoReconnect bool           `json:"auto_reconnect"`
+	Timeout       time.Duration  `json:"timeout"`
 }
 
 // ProxyConfig representa a configuração de proxy para uma sessão
@@ -146,11 +146,11 @@ type ConnectionInfo struct {
 
 // SessionStatistics representa estatísticas de uma sessão
 type SessionStatistics struct {
-	MessagesReceived int `json:"messages_received"`
-	MessagesSent     int `json:"messages_sent"`
-	Uptime           int `json:"uptime_seconds"`
-	Reconnections    int `json:"reconnections"`
-	LastActivity     time.Time `json:"last_activity"`
+	MessagesReceived int        `json:"messages_received"`
+	MessagesSent     int        `json:"messages_sent"`
+	Uptime           int        `json:"uptime_seconds"`
+	Reconnections    int        `json:"reconnections"`
+	LastActivity     time.Time  `json:"last_activity"`
 }
 
 // QRCodeResponse representa a resposta do QR Code

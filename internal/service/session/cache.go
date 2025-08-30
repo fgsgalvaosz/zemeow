@@ -12,7 +12,7 @@ import (
 // CacheEntry representa uma entrada no cache
 type CacheEntry struct {
 	Session   *models.Session
-	Token     string
+	// Token     string  // Removendo a referência ao token
 	Status    models.SessionStatus
 	LastSeen  time.Time
 	ExpiresAt time.Time
@@ -22,7 +22,7 @@ type CacheEntry struct {
 type SessionCache struct {
 	mu      sync.RWMutex
 	entries map[string]*CacheEntry // sessionID -> CacheEntry
-	tokens  map[string]string      // token -> sessionID
+	// tokens  map[string]string      // Removendo o mapa de tokens
 	logger  zerolog.Logger
 
 	// Configurações
@@ -37,7 +37,7 @@ type SessionCache struct {
 func NewSessionCache(defaultTTL, cleanupInterval time.Duration) *SessionCache {
 	cache := &SessionCache{
 		entries:         make(map[string]*CacheEntry),
-		tokens:          make(map[string]string),
+		// tokens:          make(map[string]string),  // Removendo o mapa de tokens
 		logger:          logger.Get().With().Str("component", "session_cache").Logger(),
 		defaultTTL:      defaultTTL,
 		cleanupInterval: cleanupInterval,
@@ -62,20 +62,20 @@ func (c *SessionCache) Set(sessionID string, session *models.Session, ttl ...tim
 
 	entry := &CacheEntry{
 		Session:   session,
-		Token:     session.Token,
+		// Token:     session.Token,  // Removendo a referência ao token
 		Status:    session.Status,
 		LastSeen:  time.Now(),
 		ExpiresAt: time.Now().Add(expiration),
 	}
 
 	// Remover token antigo se existir
-	if oldEntry, exists := c.entries[sessionID]; exists {
-		delete(c.tokens, oldEntry.Token)
-	}
+	// if oldEntry, exists := c.entries[sessionID]; exists {
+	// 	delete(c.tokens, oldEntry.Token)  // Removendo a referência ao token
+	// }
 
 	// Adicionar nova entrada
 	c.entries[sessionID] = entry
-	c.tokens[session.Token] = sessionID
+	// c.tokens[session.Token] = sessionID  // Removendo a referência ao token
 
 	c.logger.Debug().Str("session_id", sessionID).Msg("Session cached")
 }
@@ -103,6 +103,8 @@ func (c *SessionCache) Get(sessionID string) (*models.Session, bool) {
 }
 
 // GetByToken recupera uma sessão pelo token
+// Removendo a função GetByToken pois não usaremos mais tokens
+/*
 func (c *SessionCache) GetByToken(token string) (*models.Session, bool) {
 	c.mu.RLock()
 	sessionID, exists := c.tokens[token]
@@ -114,6 +116,7 @@ func (c *SessionCache) GetByToken(token string) (*models.Session, bool) {
 
 	return c.Get(sessionID)
 }
+*/
 
 // UpdateStatus atualiza o status de uma sessão no cache
 func (c *SessionCache) UpdateStatus(sessionID string, status models.SessionStatus) {
@@ -132,20 +135,17 @@ func (c *SessionCache) UpdateStatus(sessionID string, status models.SessionStatu
 	c.logger.Debug().Str("session_id", sessionID).Str("status", string(status)).Msg("Session status updated in cache")
 }
 
-// Delete remove uma sessão do cache
+// Delete removes a session from cache
 func (c *SessionCache) Delete(sessionID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry, exists := c.entries[sessionID]
+	_, exists := c.entries[sessionID]
 	if !exists {
 		return
 	}
 
-	// Remover token
-	delete(c.tokens, entry.Token)
-
-	// Remover entrada
+	// Remove entry
 	delete(c.entries, sessionID)
 
 	c.logger.Debug().Str("session_id", sessionID).Msg("Session removed from cache")
@@ -192,7 +192,7 @@ func (c *SessionCache) GetStats() CacheStats {
 
 	stats := CacheStats{
 		TotalEntries: len(c.entries),
-		TotalTokens:  len(c.tokens),
+		// TotalTokens:  len(c.tokens),  // Removendo a referência ao token
 	}
 
 	now := time.Now()
@@ -246,7 +246,7 @@ func (c *SessionCache) Clear() {
 	defer c.mu.Unlock()
 
 	c.entries = make(map[string]*CacheEntry)
-	c.tokens = make(map[string]string)
+	// c.tokens = make(map[string]string)  // Removendo o mapa de tokens
 
 	c.logger.Info().Msg("Session cache cleared")
 }
@@ -269,7 +269,7 @@ func (c *SessionCache) startCleanup() {
 	}
 }
 
-// cleanup remove entradas expiradas
+// cleanup removes expired entries
 func (c *SessionCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -277,17 +277,15 @@ func (c *SessionCache) cleanup() {
 	now := time.Now()
 	expired := make([]string, 0)
 
-	// Identificar entradas expiradas
+	// Identify expired entries
 	for sessionID, entry := range c.entries {
 		if now.After(entry.ExpiresAt) {
 			expired = append(expired, sessionID)
 		}
 	}
 
-	// Remover entradas expiradas
+	// Remove expired entries
 	for _, sessionID := range expired {
-		entry := c.entries[sessionID]
-		delete(c.tokens, entry.Token)
 		delete(c.entries, sessionID)
 	}
 
@@ -306,7 +304,7 @@ type CacheStats struct {
 	TotalEntries         int `json:"total_entries"`
 	ActiveEntries        int `json:"active_entries"`
 	ExpiredEntries       int `json:"expired_entries"`
-	TotalTokens          int `json:"total_tokens"`
+	// TotalTokens          int `json:"total_tokens"`  // Removendo a referência ao token
 	ConnectedSessions    int `json:"connected_sessions"`
 	DisconnectedSessions int `json:"disconnected_sessions"`
 	ConnectingSessions   int `json:"connecting_sessions"`

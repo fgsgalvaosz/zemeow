@@ -1,0 +1,364 @@
+{
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "API para integração com WhatsApp usando whatsmeow",
+        "title": "Zemeow WhatsApp API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "url": "http://www.swagger.io/support",
+            "email": "support@swagger.io"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/sessions": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Cria uma nova sessão WhatsApp com configurações opcionais de proxy e webhook",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Criar nova sessão WhatsApp",
+                "parameters": [
+                    {
+                        "description": "Dados da sessão",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Sessão criada com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Retorna informações detalhadas de uma sessão específica",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Obter detalhes da sessão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhes da sessão",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "ID da sessão inválido",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Sessão não encontrada",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}/qr": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Retorna o QR Code para autenticação da sessão WhatsApp",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Obter QR Code da sessão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "QR Code gerado com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "ID da sessão inválido",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Sessão não encontrada",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{sessionId}/send/text": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Envia uma mensagem de texto via WhatsApp",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "summary": "Enviar mensagem de texto",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da mensagem",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SendTextRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Mensagem enviada com sucesso",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "dto.ContextInfo": {
+            "type": "object",
+            "properties": {
+                "mentioned_jid": {
+                    "description": "Para menções",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "participant": {
+                    "description": "Para reply em grupo",
+                    "type": "string"
+                },
+                "stanza_id": {
+                    "description": "Para reply",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SendTextRequest": {
+            "type": "object",
+            "required": [
+                "text",
+                "to"
+            ],
+            "properties": {
+                "context_info": {
+                    "$ref": "#/definitions/dto.ContextInfo"
+                },
+                "message_id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.CreateSessionRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "proxy": {
+                    "$ref": "#/definitions/session.ProxyConfig"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "webhook": {
+                    "$ref": "#/definitions/session.WebhookConfig"
+                }
+            }
+        },
+        "session.ProxyConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "http, socks5",
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "session.WebhookConfig": {
+            "type": "object",
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "secret": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "name": "X-API-Key",
+            "in": "header"
+        }
+    }
+}
