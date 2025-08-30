@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"github.com/felipe/zemeow/internal/api/dto"
 )
 

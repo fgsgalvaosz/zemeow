@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,28 +12,47 @@ import (
 	"github.com/felipe/zemeow/internal/db"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/meow"
 	"github.com/felipe/zemeow/internal/service/session"
 )
 
 func main() {
 	// Initialize configuration
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Initialize logger
-	logger.Init(cfg.Log)
+	logger.Init(cfg.Logging.Level, cfg.Logging.Pretty)
 
 	// Initialize database
-	database, err := db.Initialize(cfg.Database)
+	dbConn, err := db.New(&cfg.Database)
 	if err != nil {
 		logger.Get().Fatal().Err(err).Msg("Failed to initialize database")
 	}
-	defer database.Close()
+	defer dbConn.Close()
+
+	database := dbConn.DB
 
 	// Initialize repositories
 	sessionRepo := repositories.NewSessionRepository(database)
 
+	// Initialize WhatsApp manager
+	whatsappManager := meow.NewWhatsAppManager(database, sessionRepo, cfg)
+	if err := whatsappManager.Start(); err != nil {
+		logger.Get().Fatal().Err(err).Msg("Failed to start WhatsApp manager")
+	}
+
+	// Initialize session manager
+	sessionManager := session.NewManager(nil, sessionRepo, cfg)
+	if err := sessionManager.Start(); err != nil {
+		logger.Get().Fatal().Err(err).Msg("Failed to start session manager")
+	}
+
 	// Initialize services
-	sessionService := session.NewService(sessionRepo)
+	sessionService := session.NewService(sessionRepo, sessionManager)
 
 	// Create server
 	server := api.NewServer(cfg, sessionRepo, sessionService, nil)

@@ -150,7 +150,9 @@ func (s *SessionService) GetSession(ctx context.Context, sessionID string) (*Ses
 	// Verificar status da sessão no manager
 	isConnected := false
 	if s.manager != nil {
-		isConnected = s.manager.IsSessionActive(sessionID)
+		if manager, ok := s.manager.(interface{ IsSessionActive(string) bool }); ok {
+			isConnected = manager.IsSessionActive(sessionID)
+		}
 	}
 
 	// Converter para SessionInfo
@@ -193,7 +195,9 @@ func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, erro
 	for i, session := range response.Sessions {
 		isConnected := false
 		if s.manager != nil {
-			isConnected = s.manager.IsSessionActive(session.SessionID)
+			if manager, ok := s.manager.(interface{ IsSessionActive(string) bool }); ok {
+				isConnected = manager.IsSessionActive(session.SessionID)
+			}
 		}
 
 		sessions[i] = &SessionInfo{
@@ -226,10 +230,14 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) er
 	}
 
 	// Desconectar sessão se estiver ativa
-	if s.manager != nil && s.manager.IsSessionActive(sessionID) {
-		s.logger.Info().Str("session_id", sessionID).Msg("Disconnecting active session before deletion")
-		if err := s.manager.DisconnectSession(sessionID); err != nil {
-			s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session, continuing with deletion")
+	if s.manager != nil {
+		if manager, ok := s.manager.(interface{ IsSessionActive(string) bool; DisconnectSession(string) error }); ok {
+			if manager.IsSessionActive(sessionID) {
+				s.logger.Info().Str("session_id", sessionID).Msg("Disconnecting active session before deletion")
+				if err := manager.DisconnectSession(sessionID); err != nil {
+					s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session, continuing with deletion")
+				}
+			}
 		}
 	}
 
@@ -324,7 +332,7 @@ func (s *SessionService) GetQRCode(ctx context.Context, sessionID string) (*QRCo
 
 	// Obter QR Code via manager se disponível
 	if manager, ok := s.manager.(interface{ GetSessionQRCode(string) (interface{}, error) }); ok {
-		qrData, err := manager.GetSessionQRCode(sessionID)
+		_, err := manager.GetSessionQRCode(sessionID)
 		if err != nil {
 			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get QR code")
 			return nil, fmt.Errorf("failed to get QR code: %w", err)

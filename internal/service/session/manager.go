@@ -33,7 +33,7 @@ type Manager struct {
 func NewManager(container *sqlstore.Container, repository repositories.SessionRepository, config *config.Config) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	whatsappMgr := meow.NewWhatsAppManager(repository, config)
+	whatsappMgr := meow.NewWhatsAppManager(nil, repository, config)
 
 	// Criar cache com TTL de 1 hora e limpeza a cada 15 minutos
 	cache := NewSessionCache(1*time.Hour, 15*time.Minute)

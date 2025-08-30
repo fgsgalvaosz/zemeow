@@ -118,7 +118,7 @@ func (s *ProxyService) buildProxyURL(config *ProxyConfig) (*url.URL, error) {
 
 	proxyURL := &url.URL{
 		Scheme: scheme,
-		Host:   fmt.Sprintf("%s:%d", config.Host, config.Port),
+		Host:   net.JoinHostPort(config.Host, fmt.Sprintf("%d", config.Port)),
 	}
 
 	// Adicionar autenticação se fornecida
@@ -160,7 +160,7 @@ func (s *ProxyService) testHTTPProxy(proxyURL *url.URL) error {
 // testSOCKS5Proxy testa conectividade de proxy SOCKS5
 func (s *ProxyService) testSOCKS5Proxy(config *ProxyConfig) error {
 	// Tentar conectar diretamente ao proxy SOCKS5
-	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	address := net.JoinHostPort(config.Host, fmt.Sprintf("%d", config.Port))
 	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to SOCKS5 proxy: %w", err)

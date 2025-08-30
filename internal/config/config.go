@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -164,7 +165,7 @@ func (c *Config) IsProduction() bool {
 
 // GetServerAddress retorna o endereço completo do servidor
 func (c *Config) GetServerAddress() string {
-	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+	return net.JoinHostPort(c.Server.Host, fmt.Sprintf("%d", c.Server.Port))
 }
 
 // Helper functions

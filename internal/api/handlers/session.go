@@ -52,8 +52,27 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 		SessionID: req.SessionID,
 		Name:      req.Name,
 		APIKey:    req.APIKey,
-		Proxy:     req.Proxy,
-		Webhook:   req.Webhook,
+	}
+
+	// Converter ProxyConfig se fornecido
+	if req.Proxy != nil {
+		config.Proxy = &session.ProxyConfig{
+			Enabled:  req.Proxy.Enabled,
+			Host:     req.Proxy.Host,
+			Port:     req.Proxy.Port,
+			Username: req.Proxy.Username,
+			Password: req.Proxy.Password,
+			Type:     req.Proxy.Type,
+		}
+	}
+
+	// Converter WebhookConfig se fornecido
+	if req.Webhook != nil {
+		config.Webhook = &session.WebhookConfig{
+			URL:    req.Webhook.URL,
+			Events: req.Webhook.Events,
+			Secret: req.Webhook.Secret,
+		}
 	}
 
 	// Criar sessão

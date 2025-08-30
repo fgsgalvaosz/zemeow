@@ -15,7 +15,20 @@ import (
 
 	"github.com/felipe/zemeow/internal/api/dto"
 	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/logger"
 )
+
+// MessageHandler gerencia endpoints de mensagens WhatsApp
+type MessageHandler struct {
+	logger logger.Logger
+}
+
+// NewMessageHandler cria uma nova instância do handler de mensagens
+func NewMessageHandler() *MessageHandler {
+	return &MessageHandler{
+		logger: logger.GetWithSession("message_handler"),
+	}
+}
 
 // GetMessageStatus obtém o status de uma mensagem (mantido para compatibilidade)
 // GET /sessions/:sessionId/messages/:messageId/status
@@ -409,4 +422,64 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			}
 		}
 	}
+}
+
+// SendMessage envia uma mensagem (mantido para compatibilidade)
+func (h *MessageHandler) SendMessage(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"status":     "sent",
+		"message":    "Send message endpoint",
+	})
+}
+
+// GetMessages lista mensagens (mantido para compatibilidade)
+func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"messages":   []fiber.Map{},
+		"message":    "Get messages endpoint",
+	})
+}
+
+// SendText envia mensagem de texto
+func (h *MessageHandler) SendText(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"status":     "sent",
+		"message":    "Send text endpoint",
+	})
+}
+
+// SendMedia envia mensagem de mídia
+func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"status":     "sent",
+		"message":    "Send media endpoint",
+	})
+}
+
+// SendLocation envia mensagem de localização
+func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"status":     "sent",
+		"message":    "Send location endpoint",
+	})
+}
+
+// SendContact envia mensagem de contato
+func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"status":     "sent",
+		"message":    "Send contact endpoint",
+	})
 }

@@ -79,3 +79,6 @@ go.sum.bak
 
 # Arquivos de documentação gerados
 docs/generated/
+
+# Arquivos de referência
+ref/
