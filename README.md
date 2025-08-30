@@ -1,111 +1,128 @@
-# zemeow
->>>>>>> d5625307bc3f26b192274cffd20d08b75e1c9939
-# ZeMeow - API Multisessão WhatsApp
+# ZeMeow - Sistema de API Multisessão WhatsApp
 
-Sistema completo de multisessão WhatsApp desenvolvido em Go, permitindo gerenciar múltiplas sessões simultaneamente com integração ao PostgreSQL.
+Sistema backend completo em Go para gerenciamento de múltiplas sessões WhatsApp, utilizando a biblioteca `whatsmeow` com integração PostgreSQL e arquitetura RESTful.
 
-## 🚀 Características
+## 🚀 Funcionalidades Principais
 
-- **Multisessão**: Gerenciamento de múltiplas sessões WhatsApp simultâneas
-- **API REST**: Interface completa para gerenciamento via HTTP
-- **PostgreSQL**: Persistência robusta com sqlstore do whatsmeow
-- **Autenticação**: Sistema seguro baseado em tokens de sessão
-- **QR Code**: Autenticação via QR Code e Pair by Phone
-- **Webhooks**: Sistema de eventos em tempo real
-- **Docker**: Containerização completa com docker-compose
-- **Logs Estruturados**: Sistema de logging centralizado com zerolog
-
-## 🛠️ Tecnologias
-
-- **Go 1.23+** - Linguagem principal
-- **Fiber v2** - Framework web
-- **WhatsApp (whatsmeow)** - Cliente WhatsApp oficial
-- **PostgreSQL 15** - Banco de dados
-- **Docker & Docker Compose** - Containerização
-- **Zerolog** - Logging estruturado
+- **Multisessão WhatsApp**: Gerenciamento de múltiplas sessões independentes
+- **API REST Simplificada**: Endpoints limpos sem prefixos desnecessários
+- **Autenticação por API Key**: Sistema simplificado com chave global admin e chaves por sessão
+- **Integração com WhatsApp**: Usando `go.mau.fi/whatsmeow` com sqlstore
+- **Persistência PostgreSQL**: Armazenamento confiável de dados de sessão
+- **Geração Automática de API Keys**: Sistema automático ou manual de chaves
+- **Logs Estruturados**: Sistema de logging completo com zerolog
 
 ## 📋 Pré-requisitos
 
 - Go 1.23 ou superior
-- Docker e Docker Compose
-- PostgreSQL 15 (ou via Docker)
+- PostgreSQL 15+
+- Docker e Docker Compose (opcional)
 
-## 🚀 Instalação
+## 🛠️ Instalação e Configuração
 
-1. **Clone o repositório:**
+### 1. Clonar o Repositório
 ```bash
-git clone https://github.com/fgsgalvaosz/zemeow.git
+git clone <repository-url>
 cd zemeow
 ```
 
-2. **Configure as variáveis de ambiente:**
+### 2. Configurar Variáveis de Ambiente
 ```bash
 cp .env.example .env
-# Edite o arquivo .env com suas configurações
+# Editar .env com suas configurações
 ```
 
-3. **Inicie os serviços com Docker:**
+### 3. Iniciar Banco de Dados (Docker)
 ```bash
-docker-compose up -d
+docker-compose up -d postgres
 ```
 
-4. **Instale as dependências Go:**
+### 4. Instalar Dependências
 ```bash
 go mod download
 ```
 
-5. **Execute as migrações:**
-```bash
-go run cmd/zemeow/main.go migrate
-```
-
-6. **Inicie a aplicação:**
+### 5. Executar Migrations
 ```bash
 go run cmd/zemeow/main.go
 ```
 
-## 📖 API Endpoints
+## 📡 Endpoints da API
 
-### Sessões
-- `POST /api/v1/sessions` - Criar nova sessão
-- `GET /api/v1/sessions` - Listar sessões
-- `GET /api/v1/sessions/{id}` - Obter detalhes da sessão
-- `PUT /api/v1/sessions/{id}` - Atualizar sessão
-- `DELETE /api/v1/sessions/{id}` - Remover sessão
+### Criação de Sessão (Admin)
+```bash
+POST /sessions
+Authorization: Bearer YOUR_ADMIN_API_KEY
 
-### Conexão WhatsApp
-- `POST /api/v1/sessions/{id}/connect` - Conectar sessão
-- `POST /api/v1/sessions/{id}/disconnect` - Desconectar sessão
-- `GET /api/v1/sessions/{id}/qr` - Obter QR Code
-- `POST /api/v1/sessions/{id}/pairphone` - Pair por telefone
-- `GET /api/v1/sessions/{id}/status` - Status da conexão
-
-### Autenticação
-- `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/refresh` - Renovar token
-- `GET /api/v1/auth/validate` - Validar token
-
-## 🏗️ Arquitetura
-
-```
-internal/
-├── api/           # Handlers e rotas HTTP
-├── config/        # Configurações da aplicação
-├── db/            # Modelos e repositórios
-├── logger/        # Sistema de logging
-└── service/       # Lógica de negócio
-    ├── auth/      # Autenticação
-    ├── meow/      # Cliente WhatsApp
-    ├── session/   # Gerenciamento de sessões
-    └── webhook/   # Sistema de webhooks
+{
+  "name": "Minha Sessão",
+  "api_key": "opcional-custom-key",
+  "webhook": {
+    "url": "https://exemplo.com/webhook"
+  }
+}
 ```
 
-## 🔧 Configuração
+### Listar Sessões (Admin)
+```bash
+GET /sessions
+Authorization: Bearer YOUR_ADMIN_API_KEY
+```
 
-O projeto utiliza variáveis de ambiente para configuração. Principais variáveis:
+### Obter Informações da Sessão
+```bash
+GET /sessions/{sessionId}
+Authorization: Bearer SESSION_API_KEY
+```
 
-```env
-# Banco de dados
+### Conectar Sessão ao WhatsApp
+```bash
+POST /sessions/{sessionId}/connect
+Authorization: Bearer SESSION_API_KEY
+```
+
+### Obter QR Code
+```bash
+GET /sessions/{sessionId}/qr
+Authorization: Bearer SESSION_API_KEY
+```
+
+### Verificar Status da Sessão
+```bash
+GET /sessions/{sessionId}/status
+Authorization: Bearer SESSION_API_KEY
+```
+
+### Deletar Sessão
+```bash
+DELETE /sessions/{sessionId}
+Authorization: Bearer SESSION_API_KEY
+```
+
+## 🔐 Sistema de Autenticação
+
+### API Key Global (Admin)
+- Definida em `ADMIN_API_KEY` no arquivo `.env`
+- Permite criar e gerenciar todas as sessões
+- Acesso completo ao sistema
+
+### API Key por Sessão
+- Gerada automaticamente na criação da sessão
+- Pode ser personalizada pelo usuário
+- Acesso restrito apenas à sessão específica
+
+### Uso nos Headers
+```bash
+Authorization: Bearer YOUR_API_KEY
+# ou
+X-API-Key: YOUR_API_KEY
+```
+
+## ⚙️ Configurações (.env)
+
+```bash
+# Banco de Dados
+DATABASE_URL=postgres://zemeow:zemeow123@localhost:5432/zemeow
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=zemeow
@@ -113,37 +130,95 @@ POSTGRES_USER=zemeow
 POSTGRES_PASSWORD=zemeow123
 
 # Servidor
-SERVER_HOST=0.0.0.0
 SERVER_PORT=8080
 
-# Autenticação
-ADMIN_TOKEN=your_admin_token_here
-JWT_SECRET=your_jwt_secret_here
+# Chave Admin (ALTERE PARA UM VALOR SEGURO)
+ADMIN_API_KEY=your_secure_admin_api_key_here
 
 # Logging
 LOG_LEVEL=info
 LOG_PRETTY=true
 ```
 
-## 🤝 Contribuindo
+## 🗃️ Estrutura do Banco
+
+O sistema cria automaticamente as seguintes tabelas:
+- `sessions`: Dados das sessões
+- `whatsmeow_*`: Tabelas do whatsmeow para armazenamento do WhatsApp
+
+## 🔄 Fluxo de Uso
+
+1. **Configurar** variáveis de ambiente
+2. **Iniciar** o servidor: `go run cmd/zemeow/main.go`
+3. **Criar sessão** usando Admin API Key
+4. **Conectar** sessão ao WhatsApp
+5. **Obter QR Code** para autenticação
+6. **Usar** a sessão com sua API Key específica
+
+## 📂 Estrutura do Projeto
+
+```
+zemeow/
+├── cmd/zemeow/main.go              # Ponto de entrada
+├── internal/
+│   ├── api/                        # Camada HTTP
+│   │   ├── handlers/              # Handlers REST
+│   │   ├── middleware/            # Middlewares
+│   │   └── server.go              # Servidor HTTP
+│   ├── config/                    # Configurações
+│   ├── db/                        # Banco de dados
+│   │   ├── migrations/            # Migrations
+│   │   ├── models/               # Modelos
+│   │   └── repositories/         # Repositórios
+│   ├── logger/                    # Sistema de logs
+│   └── service/                   # Lógica de negócio
+│       ├── session/              # Gerenciamento de sessões
+│       └── meow/                 # Integração WhatsApp
+├── .env.example                   # Exemplo de configuração
+├── docker-compose.yml            # Docker Compose
+└── go.mod                        # Dependências Go
+```
+
+## 🔧 Desenvolvimento
+
+### Executar em Modo Desenvolvimento
+```bash
+go run cmd/zemeow/main.go
+```
+
+### Build para Produção
+```bash
+go build -o zemeow cmd/zemeow/main.go
+```
+
+### Docker
+```bash
+docker-compose up -d
+```
+
+## 📝 Logs
+
+O sistema usa logs estruturados com diferentes níveis:
+- **INFO**: Operações normais
+- **ERROR**: Erros críticos
+- **DEBUG**: Informações detalhadas
+- **WARN**: Avisos importantes
+
+## 🤝 Contribuição
 
 1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
-3. Commit suas mudanças (`git commit -am 'Add nova feature'`)
-4. Push para a branch (`git push origin feature/nova-feature`)
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
 5. Abra um Pull Request
+
+## ⚠️ Avisos Importantes
+
+- **Altere a `ADMIN_API_KEY`** para um valor seguro em produção
+- **Use HTTPS** em produção para proteger as API Keys
+- **Monitore** os logs para detectar problemas
+- **Faça backup** do banco de dados regularmente
 
 ## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## ⚠️ Aviso Legal
-
-Este projeto utiliza a biblioteca não oficial `whatsmeow` para integração com WhatsApp. O uso deve estar em conformidade com os Termos de Serviço do WhatsApp.
-
-## 📞 Suporte
-
-Para dúvidas e suporte, abra uma [issue](https://github.com/fgsgalvaosz/zemeow/issues) no GitHub.
-=======
-# zemeow
->>>>>>> d5625307bc3f26b192274cffd20d08b75e1c9939
+Este projeto está sob a licença MIT. Veja o arquivo LICENSE para detalhes.

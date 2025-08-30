@@ -14,12 +14,10 @@ import (
 
 // AuthContext representa o contexto de autenticação
 type AuthContext struct {
-	UserID    string
-	UserType  string
-	APIKey    string
-	IsAdmin   bool
-	Token     string
-	SessionID string
+	APIKey        string
+	IsGlobalKey   bool
+	SessionID     string
+	HasGlobalAccess bool
 }
 
 // SessionInfo representa as informações de sessão no contexto
@@ -82,7 +80,17 @@ func GetSessionID(c *fiber.Ctx) string {
 
 // extractAPIKey extrai a API key dos headers
 func (am *AuthMiddleware) extractAPIKey(c *fiber.Ctx) string {
-	// Tentar Authorization header primeiro
+	// Primeiro tentar header apikey (método preferido)
+	if apiKey := c.Get("apikey"); apiKey != "" {
+		return apiKey
+	}
+	
+	// Segundo tentar X-API-Key header
+	if apiKey := c.Get("X-API-Key"); apiKey != "" {
+		return apiKey
+	}
+
+	// Terceiro tentar Authorization header
 	token := c.Get("Authorization")
 	if token != "" {
 		// Remover prefixo "Bearer " se presente
@@ -92,31 +100,31 @@ func (am *AuthMiddleware) extractAPIKey(c *fiber.Ctx) string {
 		return token
 	}
 
-	// Tentar X-API-Key header
-	return c.Get("X-API-Key")
+	return ""
 }
 
-// RequireAuth middleware que requer autenticação válida (Admin ou Session API Key)
-func (am *AuthMiddleware) RequireAuth() fiber.Handler {
+// RequireAPIKey middleware que requer autenticação válida (Global ou Session API Key)
+func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Extrair API key
 		apiKey := am.extractAPIKey(c)
 		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error":   "MISSING_API_KEY",
-				"message": "API key is required in Authorization header or X-API-Key header",
+				"message": "API key is required in 'apikey', 'X-API-Key' or 'Authorization' header",
 			})
 		}
 
-		// Verificar se é Admin API Key
+		// Verificar se é Global API Key
 		if apiKey == am.adminAPIKey {
-			// Criar contexto de admin
+			// Criar contexto global
 			authCtx := &AuthContext{
-				APIKey:  apiKey,
-				IsAdmin: true,
+				APIKey:          apiKey,
+				IsGlobalKey:     true,
+				HasGlobalAccess: true,
 			}
 			c.Locals("auth", authCtx)
-			am.logger.Info().Str("type", "admin").Msg("Admin authentication successful")
+			am.logger.Info().Str("type", "global").Msg("Global authentication successful")
 			return c.Next()
 		}
 
@@ -132,9 +140,10 @@ func (am *AuthMiddleware) RequireAuth() fiber.Handler {
 
 		// Criar contexto de sessão
 		authCtx := &AuthContext{
-			APIKey:    apiKey,
-			IsAdmin:   false,
-			SessionID: session.SessionID,
+			APIKey:          apiKey,
+			IsGlobalKey:     false,
+			SessionID:       session.SessionID,
+			HasGlobalAccess: false,
 		}
 		c.Locals("auth", authCtx)
 		c.Locals("session", session)
@@ -144,34 +153,35 @@ func (am *AuthMiddleware) RequireAuth() fiber.Handler {
 	}
 }
 
-// RequireAdmin middleware que requer privilégios de administrador
-func (am *AuthMiddleware) RequireAdmin() fiber.Handler {
+// RequireGlobalAPIKey middleware que requer privilégios globais
+func (am *AuthMiddleware) RequireGlobalAPIKey() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Extrair API key
 		apiKey := am.extractAPIKey(c)
 		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error":   "MISSING_API_KEY",
-				"message": "Admin API key is required",
+				"message": "Global API key is required",
 			})
 		}
 
-		// Validar Admin API Key
+		// Validar Global API Key
 		if apiKey != am.adminAPIKey {
-			am.logger.Warn().Str("provided_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Admin access denied - invalid API key")
+			am.logger.Warn().Str("provided_key_prefix", apiKey[:min(len(apiKey), 8)]+"...").Msg("Global access denied - invalid API key")
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":   "ADMIN_ACCESS_REQUIRED",
-				"message": "Administrator access required - invalid Admin API key",
+				"error":   "GLOBAL_ACCESS_REQUIRED",
+				"message": "Global access required - invalid Global API key",
 			})
 		}
 
-		// Configurar contexto de admin
+		// Configurar contexto global
 		c.Locals("auth", &AuthContext{
-			APIKey:  apiKey,
-			IsAdmin: true,
+			APIKey:          apiKey,
+			IsGlobalKey:     true,
+			HasGlobalAccess: true,
 		})
 
-		am.logger.Info().Msg("Admin authentication successful")
+		am.logger.Info().Msg("Global authentication successful")
 		return c.Next()
 	}
 }
@@ -188,8 +198,8 @@ func (am *AuthMiddleware) RequireSessionAccess() fiber.Handler {
 			})
 		}
 
-		// Admin tem acesso a todas as sessões
-		if auth.IsAdmin {
+		// Global key tem acesso a todas as sessões
+		if auth.IsGlobalKey {
 			return c.Next()
 		}
 
@@ -287,8 +297,8 @@ func (am *AuthMiddleware) RateLimit(max int) fiber.Handler {
 				return fmt.Sprintf("session:%s", sessionInfo.SessionID)
 			}
 			if auth := GetAuthContext(c); auth != nil {
-				if auth.IsAdmin {
-					return "admin"
+				if auth.IsGlobalKey {
+					return "global"
 				}
 				return fmt.Sprintf("token:%s", auth.APIKey[:min(10, len(auth.APIKey))])
 			}
@@ -299,10 +309,22 @@ func (am *AuthMiddleware) RateLimit(max int) fiber.Handler {
 				Str("ip", c.IP()).
 				Str("path", c.Path()).
 				Msg("Rate limit exceeded")
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error":   "RATE_LIMIT_EXCEEDED",
-				"message": "Too many requests, please try again later",
-			})
-		},
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+					"error":   "RATE_LIMIT_EXCEEDED",
+					"message": "Too many requests, please try again later",
+				})
+			},
+		})
+	}
+
+// CORS middleware com suporte aos headers de API key
+func (am *AuthMiddleware) CORS() fiber.Handler {
+	return cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-API-Key,apikey",
+		ExposeHeaders:    "Content-Length",
+		AllowCredentials: false,
+		MaxAge:           86400, // 24 hours
 	})
 }
