@@ -1,3 +1,5 @@
+# zemeow
+>>>>>>> d5625307bc3f26b192274cffd20d08b75e1c9939
 # ZeMeow - API Multisessão WhatsApp
 
 Sistema completo de multisessão WhatsApp desenvolvido em Go, permitindo gerenciar múltiplas sessões simultaneamente com integração ao PostgreSQL.
@@ -142,3 +144,6 @@ Este projeto utiliza a biblioteca não oficial `whatsmeow` para integração com
 ## 📞 Suporte
 
 Para dúvidas e suporte, abra uma [issue](https://github.com/fgsgalvaosz/zemeow/issues) no GitHub.
+=======
+# zemeow
+>>>>>>> d5625307bc3f26b192274cffd20d08b75e1c9939
