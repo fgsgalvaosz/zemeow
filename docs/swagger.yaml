@@ -2378,24 +2378,76 @@ paths:
       summary: Criar nova sessão WhatsApp
       tags:
       - sessions
-  /webhooks/send:
+  /webhooks/events:
+    get:
+      consumes:
+      - application/json
+      description: Retorna lista completa de todos os eventos de webhook disponíveis
+        organizados por categoria
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de eventos disponíveis
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Listar eventos de webhook
+      tags:
+      - webhooks
+  /webhooks/sessions/{sessionId}/find:
+    get:
+      consumes:
+      - application/json
+      description: Retorna lista de webhooks configurados para uma sessão específica
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de webhooks configurados
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Buscar webhooks configurados
+      tags:
+      - webhooks
+  /webhooks/sessions/{sessionId}/set:
     post:
       consumes:
       - application/json
-      description: Envia um webhook manualmente para teste
+      description: Configura um novo webhook para uma sessão específica
       parameters:
-      - description: Payload do webhook
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Configuração do webhook
         in: body
-        name: request
+        name: webhook
         required: true
         schema:
-          additionalProperties: true
           type: object
       produces:
       - application/json
       responses:
         "200":
-          description: Webhook enviado com sucesso
+          description: Webhook configurado com sucesso
           schema:
             additionalProperties: true
             type: object
@@ -2411,138 +2463,7 @@ paths:
             type: object
       security:
       - ApiKeyAuth: []
-      summary: Enviar webhook manualmente
-      tags:
-      - webhooks
-  /webhooks/sessions/{sessionId}/stats:
-    get:
-      consumes:
-      - application/json
-      description: Retorna estatísticas de webhooks específicas de uma sessão
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Estatísticas de webhooks da sessão
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: ID da sessão inválido
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter estatísticas de webhooks da sessão
-      tags:
-      - webhooks
-  /webhooks/start:
-    post:
-      consumes:
-      - application/json
-      description: Inicia o serviço global de processamento de webhooks
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Serviço iniciado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Iniciar serviço de webhooks
-      tags:
-      - webhooks
-  /webhooks/stats:
-    get:
-      consumes:
-      - application/json
-      description: Retorna estatísticas globais de webhooks enviados
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Estatísticas de webhooks
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter estatísticas de webhooks
-      tags:
-      - webhooks
-  /webhooks/status:
-    get:
-      consumes:
-      - application/json
-      description: Retorna o status atual do serviço global de webhooks
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Status do serviço de webhooks
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter status do serviço de webhooks
-      tags:
-      - webhooks
-  /webhooks/stop:
-    post:
-      consumes:
-      - application/json
-      description: Para o serviço global de processamento de webhooks
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Serviço parado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Parar serviço de webhooks
+      summary: Configurar webhook
       tags:
       - webhooks
 schemes:

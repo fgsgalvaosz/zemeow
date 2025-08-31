@@ -26,6 +26,16 @@ func NewWebhookHandler(webhookService *webhook.WebhookService) *WebhookHandler {
 }
 
 // FindWebhook busca webhooks configurados para uma sessão
+// @Summary Buscar webhooks configurados
+// @Description Retorna lista de webhooks configurados para uma sessão específica
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Lista de webhooks configurados"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /webhooks/sessions/{sessionId}/find [get]
 func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -54,6 +64,18 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 }
 
 // SetWebhook configura um webhook para uma sessão
+// @Summary Configurar webhook
+// @Description Configura um novo webhook para uma sessão específica
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param webhook body object true "Configuração do webhook" example({"url":"https://example.com/webhook","events":["message","receipt"],"active":true})
+// @Success 200 {object} map[string]interface{} "Webhook configurado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /webhooks/sessions/{sessionId}/set [post]
 func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -105,6 +127,14 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 }
 
 // GetWebhookEvents retorna lista completa de eventos disponíveis
+// @Summary Listar eventos de webhook
+// @Description Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Lista de eventos disponíveis"
+// @Router /webhooks/events [get]
 func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
 	events := h.getValidEvents()
 	
