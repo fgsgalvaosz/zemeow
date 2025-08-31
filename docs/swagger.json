@@ -3160,7 +3160,6 @@
             ],
             "properties": {
                 "phone": {
-                    "description": "Validação de telefone",
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 10
@@ -3174,7 +3173,6 @@
             ],
             "properties": {
                 "phone": {
-                    "description": "Validação de telefone",
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 10
@@ -3185,18 +3183,15 @@
             "type": "object",
             "properties": {
                 "mentioned_jid": {
-                    "description": "Para menções",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
                 },
                 "participant": {
-                    "description": "Para reply em grupo",
                     "type": "string"
                 },
                 "stanza_id": {
-                    "description": "Para reply",
                     "type": "string"
                 }
             }
@@ -3391,7 +3386,6 @@
                     "example": 8080
                 },
                 "type": {
-                    "description": "http, socks5",
                     "type": "string",
                     "example": "http"
                 },
@@ -3517,7 +3511,6 @@
             ],
             "properties": {
                 "audio": {
-                    "description": "Base64 ou URL",
                     "type": "string"
                 },
                 "context_info": {
@@ -3611,7 +3604,6 @@
                     "$ref": "#/definitions/dto.ContextInfo"
                 },
                 "document": {
-                    "description": "Base64 ou URL",
                     "type": "string"
                 },
                 "filename": {
@@ -3640,7 +3632,6 @@
                     "$ref": "#/definitions/dto.ContextInfo"
                 },
                 "image": {
-                    "description": "Base64 ou URL",
                     "type": "string"
                 },
                 "message_id": {
@@ -3748,7 +3739,6 @@
                     "type": "string"
                 },
                 "media": {
-                    "description": "Base64 data URL",
                     "type": "string"
                 },
                 "message_id": {
@@ -3791,12 +3781,10 @@
                     "maxLength": 100
                 },
                 "sticker": {
-                    "description": "Base64 ou URL",
                     "type": "string",
                     "minLength": 10
                 },
                 "to": {
-                    "description": "Validação de telefone",
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 10
@@ -3846,7 +3834,6 @@
                     "type": "string"
                 },
                 "video": {
-                    "description": "Base64 ou URL",
                     "type": "string"
                 }
             }
@@ -3914,7 +3901,7 @@
                 },
                 "url": {
                     "type": "string",
-                    "example": "https://meusite.com/webhook"
+                    "example": "https://example.com/webhook"
                 }
             }
         },
@@ -3943,7 +3930,7 @@
                 },
                 "url": {
                     "type": "string",
-                    "example": "https://my-app.com/webhook"
+                    "example": "https://example.com/webhook"
                 }
             }
         },

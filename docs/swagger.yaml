@@ -29,7 +29,6 @@ definitions:
   dto.ContactAvatarRequest:
     properties:
       phone:
-        description: Validação de telefone
         maxLength: 20
         minLength: 10
         type: string
@@ -39,7 +38,6 @@ definitions:
   dto.ContactInfoRequest:
     properties:
       phone:
-        description: Validação de telefone
         maxLength: 20
         minLength: 10
         type: string
@@ -49,15 +47,12 @@ definitions:
   dto.ContextInfo:
     properties:
       mentioned_jid:
-        description: Para menções
         items:
           type: string
         type: array
       participant:
-        description: Para reply em grupo
         type: string
       stanza_id:
-        description: Para reply
         type: string
     type: object
   dto.CreateGroupRequest:
@@ -195,7 +190,6 @@ definitions:
         example: 8080
         type: integer
       type:
-        description: http, socks5
         example: http
         type: string
       username:
@@ -283,7 +277,6 @@ definitions:
   dto.SendAudioRequest:
     properties:
       audio:
-        description: Base64 ou URL
         type: string
       context_info:
         $ref: '#/definitions/dto.ContextInfo'
@@ -349,7 +342,6 @@ definitions:
       context_info:
         $ref: '#/definitions/dto.ContextInfo'
       document:
-        description: Base64 ou URL
         type: string
       filename:
         type: string
@@ -370,7 +362,6 @@ definitions:
       context_info:
         $ref: '#/definitions/dto.ContextInfo'
       image:
-        description: Base64 ou URL
         type: string
       message_id:
         type: string
@@ -447,7 +438,6 @@ definitions:
       filename:
         type: string
       media:
-        description: Base64 data URL
         type: string
       message_id:
         type: string
@@ -477,11 +467,9 @@ definitions:
         maxLength: 100
         type: string
       sticker:
-        description: Base64 ou URL
         minLength: 10
         type: string
       to:
-        description: Validação de telefone
         maxLength: 20
         minLength: 10
         type: string
@@ -516,7 +504,6 @@ definitions:
       to:
         type: string
       video:
-        description: Base64 ou URL
         type: string
     required:
     - to
@@ -566,7 +553,7 @@ definitions:
         example: meu_webhook_secret_123
         type: string
       url:
-        example: https://meusite.com/webhook
+        example: https://example.com/webhook
         type: string
     type: object
   dto.WebhookConfigRequest:
@@ -584,7 +571,7 @@ definitions:
         minItems: 1
         type: array
       url:
-        example: https://my-app.com/webhook
+        example: https://example.com/webhook
         type: string
     required:
     - events
