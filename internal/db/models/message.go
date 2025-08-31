@@ -9,25 +9,20 @@ import (
 	"github.com/lib/pq"
 )
 
-// Message representa uma mensagem do WhatsApp persistida no banco de dados
 type Message struct {
-	// Identificação
 	ID                uuid.UUID `json:"id" db:"id"`
 	SessionID         uuid.UUID `json:"session_id" db:"session_id"`
 	MessageID         string    `json:"message_id" db:"message_id"`
 	WhatsAppMessageID *string   `json:"whatsapp_message_id" db:"whatsapp_message_id"`
 
-	// Participantes
 	ChatJID      string  `json:"chat_jid" db:"chat_jid"`
 	SenderJID    string  `json:"sender_jid" db:"sender_jid"`
 	RecipientJID *string `json:"recipient_jid" db:"recipient_jid"`
 
-	// Conteúdo
 	MessageType string          `json:"message_type" db:"message_type"`
 	Content     *string         `json:"content" db:"content"`
 	RawMessage  json.RawMessage `json:"raw_message" db:"raw_message"`
 
-	// Mídia
 	MediaURL      *string `json:"media_url" db:"media_url"`
 	MediaType     *string `json:"media_type" db:"media_type"`
 	MediaSize     *int64  `json:"media_size" db:"media_size"`
@@ -35,14 +30,17 @@ type Message struct {
 	MediaSHA256   *string `json:"media_sha256" db:"media_sha256"`
 	MediaKey      []byte  `json:"media_key" db:"media_key"`
 
-	// Contexto
-	Caption           *string `json:"caption" db:"caption"`
-	QuotedMessageID   *string `json:"quoted_message_id" db:"quoted_message_id"`
-	QuotedContent     *string `json:"quoted_content" db:"quoted_content"`
-	ReplyToMessageID  *string `json:"reply_to_message_id" db:"reply_to_message_id"`
-	ContextInfo       JSONB   `json:"context_info" db:"context_info"`
+	MinIOMediaID *string `json:"minio_media_id" db:"minio_media_id"`
+	MinIOPath    *string `json:"minio_path" db:"minio_path"`
+	MinIOURL     *string `json:"minio_url" db:"minio_url"`
+	MinIOBucket  *string `json:"minio_bucket" db:"minio_bucket"`
 
-	// Metadados
+	Caption          *string `json:"caption" db:"caption"`
+	QuotedMessageID  *string `json:"quoted_message_id" db:"quoted_message_id"`
+	QuotedContent    *string `json:"quoted_content" db:"quoted_content"`
+	ReplyToMessageID *string `json:"reply_to_message_id" db:"reply_to_message_id"`
+	ContextInfo      JSONB   `json:"context_info" db:"context_info"`
+
 	Direction   string `json:"direction" db:"direction"`
 	Status      string `json:"status" db:"status"`
 	IsFromMe    bool   `json:"is_from_me" db:"is_from_me"`
@@ -52,52 +50,41 @@ type Message struct {
 	IsEdit      bool   `json:"is_edit" db:"is_edit"`
 	EditVersion int    `json:"edit_version" db:"edit_version"`
 
-	// Funcionalidades especiais
-	Mentions              pq.StringArray `json:"mentions" db:"mentions"`
-	ReactionEmoji         *string        `json:"reaction_emoji" db:"reaction_emoji"`
-	ReactionTimestamp     *time.Time     `json:"reaction_timestamp" db:"reaction_timestamp"`
+	Mentions          pq.StringArray `json:"mentions" db:"mentions"`
+	ReactionEmoji     *string        `json:"reaction_emoji" db:"reaction_emoji"`
+	ReactionTimestamp *time.Time     `json:"reaction_timestamp" db:"reaction_timestamp"`
 
-	// Localização
 	LocationLatitude  *float64 `json:"location_latitude" db:"location_latitude"`
 	LocationLongitude *float64 `json:"location_longitude" db:"location_longitude"`
 	LocationName      *string  `json:"location_name" db:"location_name"`
 	LocationAddress   *string  `json:"location_address" db:"location_address"`
 
-	// Contato
 	ContactName  *string `json:"contact_name" db:"contact_name"`
 	ContactPhone *string `json:"contact_phone" db:"contact_phone"`
 	ContactVCard *string `json:"contact_vcard" db:"contact_vcard"`
 
-	// Sticker
 	StickerPackID   *string `json:"sticker_pack_id" db:"sticker_pack_id"`
 	StickerPackName *string `json:"sticker_pack_name" db:"sticker_pack_name"`
 
-	// Convite de grupo
 	GroupInviteCode       *string    `json:"group_invite_code" db:"group_invite_code"`
 	GroupInviteExpiration *time.Time `json:"group_invite_expiration" db:"group_invite_expiration"`
 
-	// Enquete
 	PollName            *string `json:"poll_name" db:"poll_name"`
 	PollOptions         JSONB   `json:"poll_options" db:"poll_options"`
 	PollSelectableCount *int    `json:"poll_selectable_count" db:"poll_selectable_count"`
 
-	// Tratamento de erros
 	ErrorMessage *string `json:"error_message" db:"error_message"`
 	RetryCount   int     `json:"retry_count" db:"retry_count"`
 
-	// Timestamps
 	Timestamp time.Time `json:"timestamp" db:"timestamp"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 
-	// Relacionamentos (não persistidos)
 	Session *Session `json:"session,omitempty" db:"-"`
 }
 
-// JSONB é um tipo customizado para campos JSONB do PostgreSQL
 type JSONB map[string]interface{}
 
-// Value implementa driver.Valuer para JSONB
 func (j JSONB) Value() (driver.Value, error) {
 	if j == nil {
 		return nil, nil
@@ -105,7 +92,6 @@ func (j JSONB) Value() (driver.Value, error) {
 	return json.Marshal(j)
 }
 
-// Scan implementa sql.Scanner para JSONB
 func (j *JSONB) Scan(value interface{}) error {
 	if value == nil {
 		*j = nil
@@ -120,7 +106,6 @@ func (j *JSONB) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, j)
 }
 
-// MessageType define os tipos de mensagem suportados
 type MessageType string
 
 const (
@@ -140,7 +125,6 @@ const (
 	MessageTypeUnknown     MessageType = "unknown"
 )
 
-// MessageDirection define a direção da mensagem
 type MessageDirection string
 
 const (
@@ -148,7 +132,6 @@ const (
 	MessageDirectionOutgoing MessageDirection = "outgoing"
 )
 
-// MessageStatus define o status da mensagem
 type MessageStatus string
 
 const (
@@ -163,7 +146,6 @@ const (
 	MessageStatusUndecryptable MessageStatus = "undecryptable"
 )
 
-// IsMediaMessage retorna true se a mensagem contém mídia
 func (m *Message) IsMediaMessage() bool {
 	return m.MessageType == string(MessageTypeImage) ||
 		m.MessageType == string(MessageTypeAudio) ||
@@ -172,32 +154,26 @@ func (m *Message) IsMediaMessage() bool {
 		m.MessageType == string(MessageTypeSticker)
 }
 
-// HasLocation retorna true se a mensagem contém localização
 func (m *Message) HasLocation() bool {
 	return m.LocationLatitude != nil && m.LocationLongitude != nil
 }
 
-// HasContact retorna true se a mensagem contém contato
 func (m *Message) HasContact() bool {
 	return m.ContactName != nil || m.ContactPhone != nil
 }
 
-// IsReply retorna true se a mensagem é uma resposta
 func (m *Message) IsReply() bool {
 	return m.ReplyToMessageID != nil && *m.ReplyToMessageID != ""
 }
 
-// HasMentions retorna true se a mensagem contém menções
 func (m *Message) HasMentions() bool {
 	return len(m.Mentions) > 0
 }
 
-// IsReaction retorna true se a mensagem é uma reação
 func (m *Message) IsReaction() bool {
 	return m.ReactionEmoji != nil && *m.ReactionEmoji != ""
 }
 
-// GetDisplayContent retorna o conteúdo para exibição
 func (m *Message) GetDisplayContent() string {
 	if m.Content != nil && *m.Content != "" {
 		return *m.Content
@@ -217,33 +193,31 @@ func (m *Message) GetDisplayContent() string {
 	return "[" + m.MessageType + "]"
 }
 
-// MessageFilter define filtros para busca de mensagens
 type MessageFilter struct {
-	SessionID    *uuid.UUID     `json:"session_id"`
-	ChatJID      *string        `json:"chat_jid"`
-	SenderJID    *string        `json:"sender_jid"`
-	MessageType  *MessageType   `json:"message_type"`
-	Direction    *MessageDirection `json:"direction"`
-	Status       *MessageStatus `json:"status"`
-	IsFromMe     *bool          `json:"is_from_me"`
-	HasMedia     *bool          `json:"has_media"`
-	IsEphemeral  *bool          `json:"is_ephemeral"`
-	DateFrom     *time.Time     `json:"date_from"`
-	DateTo       *time.Time     `json:"date_to"`
-	SearchText   *string        `json:"search_text"`
-	Limit        int            `json:"limit"`
-	Offset       int            `json:"offset"`
+	SessionID   *uuid.UUID        `json:"session_id"`
+	ChatJID     *string           `json:"chat_jid"`
+	SenderJID   *string           `json:"sender_jid"`
+	MessageType *MessageType      `json:"message_type"`
+	Direction   *MessageDirection `json:"direction"`
+	Status      *MessageStatus    `json:"status"`
+	IsFromMe    *bool             `json:"is_from_me"`
+	HasMedia    *bool             `json:"has_media"`
+	IsEphemeral *bool             `json:"is_ephemeral"`
+	DateFrom    *time.Time        `json:"date_from"`
+	DateTo      *time.Time        `json:"date_to"`
+	SearchText  *string           `json:"search_text"`
+	Limit       int               `json:"limit"`
+	Offset      int               `json:"offset"`
 }
 
-// MessageStatistics define estatísticas de mensagens
 type MessageStatistics struct {
-	TotalMessages     int64            `json:"total_messages"`
-	MessagesByType    map[string]int64 `json:"messages_by_type"`
-	MessagesByStatus  map[string]int64 `json:"messages_by_status"`
-	MediaMessages     int64            `json:"media_messages"`
-	IncomingMessages  int64            `json:"incoming_messages"`
-	OutgoingMessages  int64            `json:"outgoing_messages"`
-	UnreadMessages    int64            `json:"unread_messages"`
-	FailedMessages    int64            `json:"failed_messages"`
-	LastMessageTime   *time.Time       `json:"last_message_time"`
+	TotalMessages    int64            `json:"total_messages"`
+	MessagesByType   map[string]int64 `json:"messages_by_type"`
+	MessagesByStatus map[string]int64 `json:"messages_by_status"`
+	MediaMessages    int64            `json:"media_messages"`
+	IncomingMessages int64            `json:"incoming_messages"`
+	OutgoingMessages int64            `json:"outgoing_messages"`
+	UnreadMessages   int64            `json:"unread_messages"`
+	FailedMessages   int64            `json:"failed_messages"`
+	LastMessageTime  *time.Time       `json:"last_message_time"`
 }

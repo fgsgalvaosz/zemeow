@@ -1,0 +1,216 @@
+version: "3.7"
+
+# Docker Compose para Produção com Traefik
+# Stack completa para deploy no Portainer com Traefik
+# Substitua os domínios pelos seus domínios reais
+
+services:
+
+## --------------------------- ZEMEOW API --------------------------- ##
+
+  zemeow:
+    image: felipyfgs17/zemeow:v1.2.0
+    
+    environment:
+      # Banco de dados - usando nomes corretos que o código espera
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=zemeow
+      - POSTGRES_USER=zemeow
+      - POSTGRES_PASSWORD=zemeow123
+      - POSTGRES_SSLMODE=disable
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis123
+      
+      # MinIO
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=Gacont
+      - MINIO_SECRET_KEY=WIPcLhjcBoslmOd
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET_NAME=zemeow-media
+      
+      # API
+      - ADMIN_API_KEY=test123
+      - SERVER_PORT=8080
+      - SERVER_HOST=zemeow.gacont.com.br
+
+    volumes:
+      - zemeow_sessions:/app/sessions
+      - zemeow_logs:/app/logs
+
+    networks:
+      - Gacont
+
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.zemeow_api.rule=Host(`zemeow.gacont.com.br`)
+        - traefik.http.routers.zemeow_api.entrypoints=websecure
+        - traefik.http.routers.zemeow_api.tls.certresolver=letsencryptresolver
+        - traefik.http.services.zemeow_api.loadbalancer.server.port=8080
+        - traefik.http.services.zemeow_api.loadbalancer.passHostHeader=true
+        - traefik.http.routers.zemeow_api.service=zemeow_api
+
+## --------------------------- POSTGRESQL --------------------------- ##
+
+  postgres:
+    image: postgres:15-alpine
+    
+    environment:
+      - POSTGRES_DB=zemeow
+      - POSTGRES_USER=zemeow
+      - POSTGRES_PASSWORD=zemeow123
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - Gacont
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zemeow -d zemeow"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+## --------------------------- REDIS --------------------------- ##
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass redis123
+    
+    environment:
+      - REDIS_PASSWORD=redis123
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - Gacont
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+## --------------------------- MINIO --------------------------- ##
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1
+    command: server /data --console-address ":9001"
+
+    volumes:
+      - minio_data:/data
+
+    networks:
+      - Gacont
+
+    environment:
+      # Dados de acesso
+      - MINIO_ROOT_USER=Gacont
+      - MINIO_ROOT_PASSWORD=WIPcLhjcBoslmOd
+      
+      # URLs do MinIO
+      - MINIO_BROWSER_REDIRECT_URL=https://zminio.gacont.com.br
+      - MINIO_SERVER_URL=https://zs3.gacont.com.br
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        # S3 API
+        - traefik.http.routers.minio_s3.rule=Host(`zs3.gacont.com.br`)
+        - traefik.http.routers.minio_s3.entrypoints=websecure
+        - traefik.http.routers.minio_s3.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio_s3.loadbalancer.server.port=9000
+        - traefik.http.services.minio_s3.loadbalancer.passHostHeader=true
+        - traefik.http.routers.minio_s3.service=minio_s3
+        # Console
+        - traefik.http.routers.minio_console.rule=Host(`zminio.gacont.com.br`)
+        - traefik.http.routers.minio_console.entrypoints=websecure
+        - traefik.http.routers.minio_console.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio_console.loadbalancer.server.port=9001
+        - traefik.http.services.minio_console.loadbalancer.passHostHeader=true
+        - traefik.http.routers.minio_console.service=minio_console
+
+## --------------------------- MINIO CLIENT --------------------------- ##
+
+  minio-client:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    networks:
+      - Gacont
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      mc alias set minio http://minio:9000 Gacont WIPcLhjcBoslmOd;
+      mc mb minio/zemeow-media --ignore-existing;
+      mc anonymous set public minio/zemeow-media;
+      echo 'MinIO configurado com sucesso!';
+      "
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+
+## --------------------------- VOLUMES --------------------------- ##
+
+volumes:
+  postgres_data:
+    external: true
+    name: zemeow_postgres_data
+  
+  redis_data:
+    external: true
+    name: zemeow_redis_data
+  
+  minio_data:
+    external: true
+    name: zemeow_minio_data
+  
+  zemeow_sessions:
+    external: true
+    name: zemeow_sessions_data
+  
+  zemeow_logs:
+    external: true
+    name: zemeow_logs_data
+
+## --------------------------- NETWORKS --------------------------- ##
+
+networks:
+  Gacont:
+    external: true
+    name: Gacont

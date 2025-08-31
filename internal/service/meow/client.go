@@ -6,16 +6,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/message"
+	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
-
 
 type WebhookEvent struct {
 	SessionID string      `json:"session_id"`
@@ -24,13 +23,11 @@ type WebhookEvent struct {
 	Timestamp time.Time   `json:"timestamp"`
 }
 
-
 type QRCodeData struct {
 	Code      string    `json:"code"`
 	Timeout   int       `json:"timeout"`
 	Timestamp time.Time `json:"timestamp"`
 }
-
 
 type ConnectionInfo struct {
 	JID          string    `json:"jid"`
@@ -41,7 +38,6 @@ type ConnectionInfo struct {
 	BatteryLevel int       `json:"battery_level,omitempty"`
 	Plugged      bool      `json:"plugged,omitempty"`
 }
-
 
 type MyClient struct {
 	mu            sync.RWMutex
@@ -54,7 +50,6 @@ type MyClient struct {
 	logger        logger.Logger
 	webhookChan   chan<- WebhookEvent
 
-	// Serviços
 	messagePersistence *message.PersistenceService
 
 	onPairSuccess func(sessionID, jid string)
@@ -64,7 +59,6 @@ type MyClient struct {
 	reconnections    int64
 	lastActivity     time.Time
 }
-
 
 func NewMyClient(sessionID string, sessionUUID uuid.UUID, deviceStore *store.Device, webhookChan chan<- WebhookEvent, messagePersistence *message.PersistenceService) *MyClient {
 	clientLogger := logger.GetWhatsAppLogger(sessionID)
@@ -88,19 +82,16 @@ func NewMyClient(sessionID string, sessionUUID uuid.UUID, deviceStore *store.Dev
 	return myClient
 }
 
-
 func (c *MyClient) SetOnPairSuccess(callback func(sessionID, jid string)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onPairSuccess = callback
 }
 
-
 func (c *MyClient) setupDefaultEventHandlers() {
 
 	c.client.AddEventHandler(c.handleEvent)
 }
-
 
 func (c *MyClient) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
@@ -112,7 +103,6 @@ func (c *MyClient) handleEvent(evt interface{}) {
 
 		c.logger.Info().Msg("Connected to WhatsApp")
 
-		// Se já estamos logados (reconexão), garantir que o JID está atualizado
 		if c.client.IsLoggedIn() && c.client.Store.ID != nil {
 			jid := c.client.Store.ID.String()
 			c.logger.Info().Str("jid", jid).Msg("Device already logged in, ensuring JID is updated")
@@ -149,7 +139,6 @@ func (c *MyClient) handleEvent(evt interface{}) {
 
 		c.logger.Info().Str("from", v.Info.Sender.String()).Msg("Received message")
 
-		// Persistir mensagem no banco de dados
 		if c.messagePersistence != nil {
 			err := c.messagePersistence.ProcessMessageEvent(c.sessionUUID, v)
 			if err != nil {
@@ -175,7 +164,6 @@ func (c *MyClient) handleEvent(evt interface{}) {
 	case *events.PairSuccess:
 		jid := v.ID.String()
 		c.logger.Info().Str("jid", jid).Str("business_name", v.BusinessName).Str("platform", v.Platform).Msg("QR Pair Success")
-
 
 		c.mu.RLock()
 		callback := c.onPairSuccess
@@ -213,7 +201,6 @@ func (c *MyClient) handleEvent(evt interface{}) {
 	case *events.Receipt:
 		c.logger.Debug().Str("message_id", v.MessageIDs[0]).Str("type", string(v.Type)).Msg("Message receipt")
 
-		// Processar confirmação de leitura/entrega
 		if c.messagePersistence != nil {
 			err := c.messagePersistence.ProcessReceiptEvent(c.sessionUUID, v)
 			if err != nil {
@@ -315,10 +302,9 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"conversations": len(v.Data.Conversations),
 			"timestamp":     time.Now().Unix(),
 		})
-	// Outros eventos podem ser adicionados aqui conforme necessário
+
 	}
 }
-
 
 func (c *MyClient) Connect() error {
 	c.logger.Info().Msg("Connecting to WhatsApp")
@@ -330,7 +316,6 @@ func (c *MyClient) Connect() error {
 	return c.client.Connect()
 }
 
-
 func (c *MyClient) Disconnect() {
 	c.logger.Info().Msg("Disconnecting from WhatsApp")
 	c.client.Disconnect()
@@ -340,18 +325,15 @@ func (c *MyClient) Disconnect() {
 	c.mu.Unlock()
 }
 
-
 func (c *MyClient) IsConnected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.isConnected && c.client.IsConnected()
 }
 
-
 func (c *MyClient) IsLoggedIn() bool {
 	return c.client.IsLoggedIn()
 }
-
 
 func (c *MyClient) GetJID() types.JID {
 	if c.client.Store.ID == nil {
@@ -360,11 +342,9 @@ func (c *MyClient) GetJID() types.JID {
 	return *c.client.Store.ID
 }
 
-
 func (c *MyClient) GetPushName() string {
 	return c.client.Store.PushName
 }
-
 
 func (c *MyClient) GetStatistics() *models.SessionStatistics {
 	c.mu.RLock()
@@ -378,16 +358,13 @@ func (c *MyClient) GetStatistics() *models.SessionStatistics {
 	}
 }
 
-
 func (c *MyClient) RemoveEventHandler(id uint32) {
 	c.client.RemoveEventHandler(id)
 }
 
-
 func (c *MyClient) GetClient() *whatsmeow.Client {
 	return c.client
 }
-
 
 func (c *MyClient) sendWebhookEvent(event string, data interface{}) {
 	if c.webhookChan == nil {
@@ -409,7 +386,6 @@ func (c *MyClient) sendWebhookEvent(event string, data interface{}) {
 	}
 }
 
-
 func (c *MyClient) PairPhone(phoneNumber string) error {
 	c.logger.Info().Str("phone", phoneNumber).Msg("Starting phone pairing")
 
@@ -417,11 +393,8 @@ func (c *MyClient) PairPhone(phoneNumber string) error {
 		return fmt.Errorf("client is already logged in")
 	}
 
-
-
 	return fmt.Errorf("phone pairing not implemented yet")
 }
-
 
 func (c *MyClient) Logout() error {
 	c.logger.Info().Msg("Logging out from WhatsApp")
@@ -441,5 +414,3 @@ func (c *MyClient) Logout() error {
 
 	return nil
 }
-
-

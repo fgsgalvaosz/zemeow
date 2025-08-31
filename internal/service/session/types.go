@@ -9,7 +9,6 @@ import (
 	"go.mau.fi/whatsmeow"
 )
 
-
 type Status string
 
 const (
@@ -20,7 +19,6 @@ const (
 	StatusError         Status = "error"
 )
 
-
 var (
 	ErrSessionExists       = errors.New("session already exists")
 	ErrSessionNotFound     = errors.New("session not found")
@@ -28,7 +26,6 @@ var (
 	ErrSessionNotConnected = errors.New("session is not connected")
 	ErrInvalidConfig       = errors.New("invalid session configuration")
 )
-
 
 type Session struct {
 	ID          string
@@ -40,7 +37,6 @@ type Session struct {
 	logger      logger.Logger
 }
 
-
 type Config struct {
 	SessionID     string         `json:"session_id,omitempty"`
 	Name          string         `json:"name"`
@@ -51,23 +47,20 @@ type Config struct {
 	LogLevel      string         `json:"log_level"`
 }
 
-
 type ProxyConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
-	Type     string `json:"type"` // http, socks5
+	Type     string `json:"type"`
 }
-
 
 type WebhookConfig struct {
 	URL    string   `json:"url"`
 	Events []string `json:"events"`
 	Secret string   `json:"secret,omitempty"`
 }
-
 
 func (s *Session) Connect(ctx context.Context) error {
 	if s.Status == StatusConnected || s.Status == StatusAuthenticated {
@@ -77,12 +70,8 @@ func (s *Session) Connect(ctx context.Context) error {
 	s.Status = StatusConnecting
 	s.logger.Info().Msg("Connecting session to WhatsApp")
 
-
-
-
 	return nil
 }
-
 
 func (s *Session) Disconnect() error {
 	if s.Status == StatusDisconnected {
@@ -99,16 +88,13 @@ func (s *Session) Disconnect() error {
 	return nil
 }
 
-
 func (s *Session) GetStatus() Status {
 	return s.Status
 }
 
-
 func (s *Session) IsConnected() bool {
 	return s.Status == StatusConnected || s.Status == StatusAuthenticated
 }
-
 
 func (s *Session) GetInfo() *SessionInfo {
 	info := &SessionInfo{
@@ -130,20 +116,18 @@ func (s *Session) GetInfo() *SessionInfo {
 	return info
 }
 
-
 type SessionInfo struct {
-	ID                string     `json:"id"`
-	Name              string     `json:"name"`
-	APIKey            string     `json:"api_key,omitempty"`
-	Status            Status     `json:"status"`
-	JID               *string    `json:"jid,omitempty"`
-	IsConnected       bool       `json:"is_connected"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	ConnectedAt       *time.Time `json:"connected_at,omitempty"`
-	LastConnectedAt   *time.Time `json:"last_connected_at,omitempty"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	APIKey          string     `json:"api_key,omitempty"`
+	Status          Status     `json:"status"`
+	JID             *string    `json:"jid,omitempty"`
+	IsConnected     bool       `json:"is_connected"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	ConnectedAt     *time.Time `json:"connected_at,omitempty"`
+	LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 }
-
 
 type QRCodeInfo struct {
 	Code      string    `json:"code"`
@@ -151,11 +135,9 @@ type QRCodeInfo struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-
 type PairPhoneRequest struct {
 	PhoneNumber string `json:"phone_number"`
 }
-
 
 type PairPhoneResponse struct {
 	Success bool   `json:"success"`

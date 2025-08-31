@@ -1,0 +1,145 @@
+version: '3.8'
+
+# Docker Compose para Desenvolvimento
+# Contém apenas as dependências necessárias para desenvolvimento local
+# Use: make dev ou docker-compose -f docker-compose.dev.yml up -d
+
+services:
+  # PostgreSQL - Banco de dados principal
+  postgres:
+    image: postgres:15-alpine
+    container_name: zemeow_postgres_dev
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
+      - POSTGRES_USER=${POSTGRES_USER:-zemeow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zemeow123}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - zemeow_dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zemeow} -d ${POSTGRES_DB:-zemeow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO - Armazenamento de mídias
+  minio:
+    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+    container_name: zemeow_minio_dev
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-Gacont}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL:-http://127.0.0.1:9001}
+      - MINIO_SERVER_URL=${MINIO_SERVER_URL:-http://127.0.0.1:9000}
+      - MINIO_BROWSER=on
+      - MINIO_DOMAIN=127.0.0.1
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_dev_data:/data
+    networks:
+      - zemeow_dev_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinIO Client - Configuração inicial
+  minio-client:
+    image: minio/mc:latest
+    container_name: zemeow_minio_client_dev
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - zemeow_dev_network
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-Gacont} ${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd};
+      mc mb minio/zemeow-media --ignore-existing;
+      mc anonymous set public minio/zemeow-media;
+      echo 'MinIO configurado com sucesso!';
+      "
+
+  # Redis - Cache e sessões
+  redis:
+    image: redis:7-alpine
+    container_name: zemeow_redis_dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - zemeow_dev_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Webhook Tester - Para testar webhooks durante desenvolvimento
+  webhook-tester:
+    image: tarampampam/webhook-tester:latest
+    container_name: zemeow_webhook_tester_dev
+    restart: unless-stopped
+    ports:
+      - "${WEBHOOK_TESTER_PORT:-8081}:8080"
+    environment:
+      - LISTEN_ADDR=0.0.0.0
+      - LISTEN_PORT=8080
+      - MAX_REQUESTS_PER_SESSION=1000
+      - SESSION_TTL=24h
+    networks:
+      - zemeow_dev_network
+
+  # DbGate - Interface de administração do banco de dados
+  dbgate:
+    image: dbgate/dbgate:latest
+    container_name: zemeow_dbgate_dev
+    restart: unless-stopped
+    environment:
+      - CONNECTIONS=con1
+      - LABEL_con1=ZeMeow PostgreSQL Dev
+      - SERVER_con1=postgres
+      - USER_con1=${POSTGRES_USER:-zemeow}
+      - PASSWORD_con1=${POSTGRES_PASSWORD:-zemeow123}
+      - PORT_con1=5432
+      - ENGINE_con1=postgres@dbgate-plugin-postgres
+    ports:
+      - "${DBGATE_PORT:-3000}:3000"
+    networks:
+      - zemeow_dev_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# Volumes para persistência de dados
+volumes:
+  postgres_dev_data:
+    driver: local
+    name: zemeow_postgres_dev_data
+  minio_dev_data:
+    driver: local
+    name: zemeow_minio_dev_data
+  redis_dev_data:
+    driver: local
+    name: zemeow_redis_dev_data
+
+# Rede para comunicação entre serviços
+networks:
+  zemeow_dev_network:
+    driver: bridge
+    name: zemeow_dev_network

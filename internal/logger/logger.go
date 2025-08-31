@@ -11,7 +11,6 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-
 type Logger interface {
 	Debug() *zerolog.Event
 	Info() *zerolog.Event
@@ -22,11 +21,9 @@ type Logger interface {
 	Level(level zerolog.Level) Logger
 }
 
-
 type AppLogger struct {
 	logger zerolog.Logger
 }
-
 
 type WhatsAppLogger struct {
 	logger zerolog.Logger
@@ -34,10 +31,8 @@ type WhatsAppLogger struct {
 }
 
 var (
-
 	globalLogger *AppLogger
 )
-
 
 func Init(level string, pretty bool) {
 
@@ -46,7 +41,6 @@ func Init(level string, pretty bool) {
 		logLevel = zerolog.InfoLevel
 	}
 
-
 	var output io.Writer = os.Stdout
 	if pretty {
 		output = zerolog.ConsoleWriter{
@@ -54,7 +48,6 @@ func Init(level string, pretty bool) {
 			TimeFormat: time.RFC3339,
 		}
 	}
-
 
 	logger := zerolog.New(output).Level(logLevel).With().
 		Timestamp().
@@ -65,14 +58,12 @@ func Init(level string, pretty bool) {
 	log.Logger = logger
 }
 
-
 func Get() Logger {
 	if globalLogger == nil {
-		Init("info", true) // Default initialization
+		Init("info", true)
 	}
 	return globalLogger
 }
-
 
 func GetWithSession(sessionID string) Logger {
 	if globalLogger == nil {
@@ -83,8 +74,6 @@ func GetWithSession(sessionID string) Logger {
 	}
 }
 
-
-
 type WhatsAppLoggerInterface interface {
 	Errorf(msg string, args ...interface{})
 	Warnf(msg string, args ...interface{})
@@ -92,7 +81,6 @@ type WhatsAppLoggerInterface interface {
 	Debugf(msg string, args ...interface{})
 	Sub(module string) waLog.Logger
 }
-
 
 func GetWhatsAppLogger(module string) waLog.Logger {
 	if globalLogger == nil {
@@ -104,7 +92,6 @@ func GetWhatsAppLogger(module string) waLog.Logger {
 		module: module,
 	}
 }
-
 
 func (l *AppLogger) Debug() *zerolog.Event {
 	return l.logger.Debug()
@@ -134,7 +121,6 @@ func (l *AppLogger) Level(level zerolog.Level) Logger {
 	return &AppLogger{logger: l.logger.Level(level)}
 }
 
-
 func (w *WhatsAppLogger) Errorf(msg string, args ...interface{}) {
 	w.logger.Error().Msgf(msg, args...)
 }
@@ -157,7 +143,6 @@ func (w *WhatsAppLogger) Sub(module string) waLog.Logger {
 		module: w.module + "/" + module,
 	}
 }
-
 
 func WithContext(ctx context.Context) Logger {
 	if globalLogger == nil {

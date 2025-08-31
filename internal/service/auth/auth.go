@@ -12,13 +12,11 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
-
 type AuthContext struct {
 	SessionID string
 	Role      string
 	IsAdmin   bool
 }
-
 
 type AuthService struct {
 	sessionRepo repositories.SessionRepository
@@ -28,7 +26,6 @@ type AuthService struct {
 	mutex       sync.RWMutex
 }
 
-
 func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Config) (*AuthService, error) {
 	service := &AuthService{
 		sessionRepo: sessionRepo,
@@ -36,7 +33,6 @@ func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Conf
 		logger:      logger.GetWithSession("auth_service"),
 		apiKeys:     make(map[string]*AuthContext),
 	}
-
 
 	adminToken := service.generateAPIKey()
 	service.apiKeys[adminToken] = &AuthContext{
@@ -49,7 +45,6 @@ func NewAuthService(sessionRepo repositories.SessionRepository, cfg *config.Conf
 	return service, nil
 }
 
-
 func (s *AuthService) ValidateAPIKey(apiKey string) (*AuthContext, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -61,13 +56,9 @@ func (s *AuthService) ValidateAPIKey(apiKey string) (*AuthContext, error) {
 	return nil, fmt.Errorf("invalid API key")
 }
 
-
 func (s *AuthService) GenerateAPIKey(sessionID string) (map[string]interface{}, error) {
 
-
-
 	apiKey := s.generateAPIKey()
-
 
 	s.mutex.Lock()
 	s.apiKeys[apiKey] = &AuthContext{
@@ -88,7 +79,6 @@ func (s *AuthService) GenerateAPIKey(sessionID string) (map[string]interface{}, 
 	return response, nil
 }
 
-
 func (s *AuthService) RevokeAPIKey(apiKey string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -101,7 +91,6 @@ func (s *AuthService) RevokeAPIKey(apiKey string) error {
 	s.logger.Info().Msg("API key revoked")
 	return nil
 }
-
 
 func (s *AuthService) GetAPIKeyInfo(apiKey string) (map[string]interface{}, error) {
 	s.mutex.RLock()
@@ -121,7 +110,6 @@ func (s *AuthService) GetAPIKeyInfo(apiKey string) (map[string]interface{}, erro
 	}, nil
 }
 
-
 func (s *AuthService) GetCacheStats() map[string]interface{} {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -132,11 +120,9 @@ func (s *AuthService) GetCacheStats() map[string]interface{} {
 	}
 }
 
-
 func (s *AuthService) ClearCache() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
 
 	adminKeys := make(map[string]*AuthContext)
 	for key, ctx := range s.apiKeys {
@@ -148,7 +134,6 @@ func (s *AuthService) ClearCache() {
 	s.apiKeys = adminKeys
 	s.logger.Info().Msg("API key cache cleared")
 }
-
 
 func (s *AuthService) generateAPIKey() string {
 	bytes := make([]byte, 32)

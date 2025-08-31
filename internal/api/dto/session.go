@@ -2,25 +2,20 @@ package dto
 
 import "time"
 
-
-
-
 type ProxyConfig struct {
 	Enabled  bool   `json:"enabled" example:"true"`
 	Host     string `json:"host" example:"proxy.example.com"`
 	Port     int    `json:"port" example:"8080"`
 	Username string `json:"username,omitempty" example:"usuario_proxy"`
 	Password string `json:"password,omitempty" example:"senha_proxy"`
-	Type     string `json:"type" example:"http"` // http, socks5
+	Type     string `json:"type" example:"http"`
 }
 
-
 type WebhookConfig struct {
-	URL    string   `json:"url" example:"https://meusite.com/webhook"`
+	URL    string   `json:"url" example:"https://example.com/webhook"`
 	Events []string `json:"events" example:"message,status"`
 	Secret string   `json:"secret,omitempty" example:"meu_webhook_secret_123"`
 }
-
 
 type CreateSessionRequest struct {
 	Name      string         `json:"name" validate:"required,min=1,max=100" example:"Minha Sessão WhatsApp"`
@@ -30,14 +25,12 @@ type CreateSessionRequest struct {
 	Proxy     *ProxyConfig   `json:"proxy,omitempty"`
 }
 
-
 type UpdateSessionRequest struct {
 	Name    string `json:"name,omitempty" validate:"omitempty,min=1,max=100"`
 	Webhook string `json:"webhook,omitempty" validate:"omitempty,url"`
 	Proxy   string `json:"proxy,omitempty" validate:"omitempty,url"`
 	Events  string `json:"events,omitempty"`
 }
-
 
 type SessionResponse struct {
 	ID        string     `json:"id"`
@@ -56,12 +49,10 @@ type SessionResponse struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 }
 
-
 type SessionListResponse struct {
 	Sessions []SessionResponse `json:"sessions"`
 	Total    int               `json:"total"`
 }
-
 
 type SessionStatusResponse struct {
 	SessionID    string     `json:"session_id"`
@@ -74,7 +65,6 @@ type SessionStatusResponse struct {
 	IsCharging   bool       `json:"is_charging,omitempty"`
 }
 
-
 type SessionStatsResponse struct {
 	SessionID        string     `json:"session_id"`
 	MessagesSent     int64      `json:"messages_sent"`
@@ -84,7 +74,6 @@ type SessionStatsResponse struct {
 	LastActivity     *time.Time `json:"last_activity,omitempty"`
 }
 
-
 type QRCodeResponse struct {
 	SessionID string `json:"session_id"`
 	QRCode    string `json:"qr_code"`
@@ -92,7 +81,6 @@ type QRCodeResponse struct {
 	ExpiresAt int64  `json:"expires_at"`
 	Status    string `json:"status"`
 }
-
 
 type ProxyRequest struct {
 	Enabled  bool   `json:"enabled"`
@@ -103,7 +91,6 @@ type ProxyRequest struct {
 	Password string `json:"password,omitempty"`
 }
 
-
 type ProxyResponse struct {
 	SessionID string `json:"session_id"`
 	Enabled   bool   `json:"enabled"`
@@ -113,7 +100,6 @@ type ProxyResponse struct {
 	Username  string `json:"username,omitempty"`
 	Status    string `json:"status"`
 }
-
 
 type ProxyTestResponse struct {
 	SessionID    string `json:"session_id"`

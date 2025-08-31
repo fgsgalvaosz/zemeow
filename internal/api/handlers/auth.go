@@ -6,11 +6,9 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
-
 type AuthHandler struct {
 	logger logger.Logger
 }
-
 
 func NewAuthHandler() *AuthHandler {
 	return &AuthHandler{
@@ -18,12 +16,9 @@ func NewAuthHandler() *AuthHandler {
 	}
 }
 
-
 type GenerateAPIKeyRequest struct {
 	SessionID string `json:"session_id"`
 }
-
-
 
 // @Summary Validar API Key
 // @Description Valida se uma API key é válida e ativa
@@ -40,8 +35,6 @@ func (h *AuthHandler) ValidateAPIKey(c *fiber.Ctx) error {
 		"message": "API validation endpoint",
 	})
 }
-
-
 
 // @Summary Gerar API Key
 // @Description Gera uma nova API key para uma sessão
@@ -60,8 +53,6 @@ func (h *AuthHandler) GenerateAPIKey(c *fiber.Ctx) error {
 	})
 }
 
-
-
 // @Summary Revogar API Key
 // @Description Revoga uma API key existente, tornando-a inválida
 // @Tags auth
@@ -77,10 +68,6 @@ func (h *AuthHandler) RevokeAPIKey(c *fiber.Ctx) error {
 		"message": "API key revocation endpoint",
 	})
 }
-
-
-
-
 
 // @Summary Obter estatísticas do cache
 // @Description Retorna estatísticas de uso do cache de autenticação
@@ -98,8 +85,6 @@ func (h *AuthHandler) GetCacheStats(c *fiber.Ctx) error {
 	})
 }
 
-
-
 // @Summary Limpar cache
 // @Description Limpa o cache de autenticação, forçando revalidação de todas as API keys
 // @Tags auth
@@ -116,8 +101,6 @@ func (h *AuthHandler) ClearCache(c *fiber.Ctx) error {
 	})
 }
 
-
-
 func (h *AuthHandler) extractAPIKey(c *fiber.Ctx) string {
 
 	authHeader := c.Get("Authorization")
@@ -128,12 +111,10 @@ func (h *AuthHandler) extractAPIKey(c *fiber.Ctx) string {
 		return authHeader
 	}
 
-
 	apiKey := c.Get("X-API-Key")
 	if apiKey != "" {
 		return apiKey
 	}
-
 
 	return c.Query("api_key")
 }

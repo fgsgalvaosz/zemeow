@@ -13,41 +13,34 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 )
 
-
 type DB struct {
 	*sql.DB
 	config *config.DatabaseConfig
 	logger logger.Logger
 }
 
-
 func Connect(cfg *config.Config) (*DB, error) {
 	return New(&cfg.Database)
 }
 
-
 func Migrate(db *DB) error {
 	return db.Migrate()
 }
-
 
 func New(cfg *config.DatabaseConfig) (*DB, error) {
 	log := logger.Get()
 
 	log.Info().Str("host", cfg.Host).Int("port", cfg.Port).Str("database", cfg.Name).Msg("Connecting to database")
 
-
 	db, err := sql.Open("postgres", cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
-
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
@@ -62,20 +55,16 @@ func New(cfg *config.DatabaseConfig) (*DB, error) {
 	}, nil
 }
 
-
 func (db *DB) Close() error {
 	db.logger.Info().Msg("Closing database connection")
 	return db.DB.Close()
 }
 
-
 func (db *DB) GetSQLStore() *sqlstore.Container {
 
 	whatsmeowLogger := logger.GetWhatsAppLogger("sqlstore")
 
-
 	container := sqlstore.NewWithDB(db.DB, "postgres", whatsmeowLogger)
-
 
 	if err := container.Upgrade(context.Background()); err != nil {
 
@@ -89,7 +78,6 @@ func (db *DB) GetSQLStore() *sqlstore.Container {
 
 	db.logger.Info().Msg("WhatsApp SQL store container created and upgraded automatically")
 
-
 	if err := db.createWhatsAppRelationships(); err != nil {
 		db.logger.Warn().Err(err).Msg("Failed to create WhatsApp relationships")
 
@@ -98,12 +86,10 @@ func (db *DB) GetSQLStore() *sqlstore.Container {
 	return container
 }
 
-
 func (db *DB) Migrate() error {
 	migrator := NewMigrator(db.DB)
 	return migrator.Run()
 }
-
 
 func (db *DB) Health() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -112,11 +98,9 @@ func (db *DB) Health() error {
 	return db.PingContext(ctx)
 }
 
-
 func (db *DB) GetStats() sql.DBStats {
 	return db.Stats()
 }
-
 
 func (db *DB) Transaction(fn func(*sql.Tx) error) error {
 	tx, err := db.Begin()
@@ -139,7 +123,6 @@ func (db *DB) Transaction(fn func(*sql.Tx) error) error {
 	return err
 }
 
-
 func (db *DB) OptimizeForWhatsApp() error {
 	db.logger.Info().Msg("Applying WhatsApp optimizations to PostgreSQL")
 
@@ -149,12 +132,10 @@ func (db *DB) OptimizeForWhatsApp() error {
 		"SET lock_timeout = '10s'",
 		"SET idle_in_transaction_session_timeout = '60s'",
 
-
-		"SET log_min_duration_statement = 1000", // Log queries > 1s
+		"SET log_min_duration_statement = 1000",
 		"SET log_checkpoints = on",
 		"SET log_connections = on",
 		"SET log_disconnections = on",
-
 
 		"SET autovacuum_vacuum_scale_factor = 0.1",
 		"SET autovacuum_analyze_scale_factor = 0.05",
@@ -170,7 +151,6 @@ func (db *DB) OptimizeForWhatsApp() error {
 	db.logger.Info().Msg("WhatsApp optimizations applied")
 	return nil
 }
-
 
 func (db *DB) CreateIndexes() error {
 	db.logger.Info().Msg("Creating optimized indexes for application tables")
@@ -195,10 +175,8 @@ func (db *DB) CreateIndexes() error {
 	return nil
 }
 
-
 func (db *DB) VerifySetup() error {
 	db.logger.Info().Msg("Verifying database setup")
-
 
 	var exists bool
 	query := `
@@ -215,7 +193,6 @@ func (db *DB) VerifySetup() error {
 		return fmt.Errorf("sessions table does not exist")
 	}
 
-
 	var migrationCount int
 	migrationQuery := `
 		SELECT COUNT(*) FROM schema_migrations
@@ -230,20 +207,15 @@ func (db *DB) VerifySetup() error {
 	return nil
 }
 
-
 func (db *DB) createWhatsAppRelationships() error {
 	db.logger.Info().Msg("Creating relationships between sessions and WhatsApp tables")
 
-
-
 	migrator := NewMigrator(db.DB)
-
 
 	appliedVersions, err := migrator.GetAppliedVersions()
 	if err != nil {
 		return fmt.Errorf("failed to get applied versions: %w", err)
 	}
-
 
 	relationshipMigrations := []int{3, 4, 5}
 	for _, version := range relationshipMigrations {

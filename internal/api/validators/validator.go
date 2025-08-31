@@ -11,11 +11,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-
 type Validator struct {
 	validate *validator.Validate
 }
-
 
 type ValidationError struct {
 	Field   string `json:"field"`
@@ -23,7 +21,6 @@ type ValidationError struct {
 	Message string `json:"message"`
 	Value   string `json:"value,omitempty"`
 }
-
 
 type ValidationErrorResponse struct {
 	ErrorCode string            `json:"error"`
@@ -33,18 +30,14 @@ type ValidationErrorResponse struct {
 	Status    int               `json:"status"`
 }
 
-
 func (v *ValidationErrorResponse) Error() string {
 	return v.Message
 }
 
-
 func NewValidator() *Validator {
 	v := validator.New()
-	
 
 	registerCustomValidations(v)
-	
 
 	v.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
@@ -60,24 +53,18 @@ func NewValidator() *Validator {
 	return &Validator{validate: v}
 }
 
-
 func registerCustomValidations(v *validator.Validate) {
 
 	v.RegisterValidation("e164", validateE164)
-	
 
 	v.RegisterValidation("latitude", validateLatitude)
-	
 
 	v.RegisterValidation("longitude", validateLongitude)
-	
 
 	v.RegisterValidation("session_id", validateSessionID)
-	
 
 	v.RegisterValidation("api_key", validateAPIKey)
 }
-
 
 func validateE164(fl validator.FieldLevel) bool {
 	phone := fl.Field().String()
@@ -86,18 +73,15 @@ func validateE164(fl validator.FieldLevel) bool {
 	return regex.MatchString(phone)
 }
 
-
 func validateLatitude(fl validator.FieldLevel) bool {
 	lat := fl.Field().Float()
 	return lat >= -90 && lat <= 90
 }
 
-
 func validateLongitude(fl validator.FieldLevel) bool {
 	lng := fl.Field().Float()
 	return lng >= -180 && lng <= 180
 }
-
 
 func validateSessionID(fl validator.FieldLevel) bool {
 	sessionID := fl.Field().String()
@@ -106,18 +90,15 @@ func validateSessionID(fl validator.FieldLevel) bool {
 	return regex.MatchString(sessionID)
 }
 
-
 func validateAPIKey(fl validator.FieldLevel) bool {
 	apiKey := fl.Field().String()
 
 	return len(apiKey) >= 32
 }
 
-
 func (v *Validator) ValidateStruct(s interface{}) error {
 	return v.validate.Struct(s)
 }
-
 
 func (v *Validator) ValidateAndBindJSON(c *fiber.Ctx, obj interface{}) error {
 
@@ -130,14 +111,12 @@ func (v *Validator) ValidateAndBindJSON(c *fiber.Ctx, obj interface{}) error {
 		}
 	}
 
-
 	if err := v.ValidateStruct(obj); err != nil {
 		return v.formatValidationError(err)
 	}
 
 	return nil
 }
-
 
 func (v *Validator) ValidateQuery(c *fiber.Ctx, obj interface{}) error {
 
@@ -150,14 +129,12 @@ func (v *Validator) ValidateQuery(c *fiber.Ctx, obj interface{}) error {
 		}
 	}
 
-
 	if err := v.ValidateStruct(obj); err != nil {
 		return v.formatValidationError(err)
 	}
 
 	return nil
 }
-
 
 func (v *Validator) formatValidationError(err error) *ValidationErrorResponse {
 	var validationErrors []ValidationError
@@ -181,7 +158,6 @@ func (v *Validator) formatValidationError(err error) *ValidationErrorResponse {
 		Status:    fiber.StatusBadRequest,
 	}
 }
-
 
 func getValidationMessage(err validator.FieldError) string {
 	field := err.Field()
@@ -226,47 +202,43 @@ func getValidationMessage(err validator.FieldError) string {
 	}
 }
 
-
 func (v *Validator) ValidateSessionID(sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("session ID is required")
 	}
-	
+
 	regex := regexp.MustCompile(`^[a-zA-Z0-9_-]{3,50}$`)
 	if !regex.MatchString(sessionID) {
 		return fmt.Errorf("session ID must be 3-50 alphanumeric characters, underscores, or hyphens")
 	}
-	
+
 	return nil
 }
-
 
 func (v *Validator) ValidateAPIKey(apiKey string) error {
 	if apiKey == "" {
 		return fmt.Errorf("API key is required")
 	}
-	
+
 	if len(apiKey) < 32 {
 		return fmt.Errorf("API key must be at least 32 characters long")
 	}
-	
+
 	return nil
 }
-
 
 func (v *Validator) ValidatePhoneNumber(phone string) error {
 	if phone == "" {
 		return fmt.Errorf("phone number is required")
 	}
-	
+
 	regex := regexp.MustCompile(`^\+[1-9]\d{1,14}$`)
 	if !regex.MatchString(phone) {
 		return fmt.Errorf("phone number must be in E.164 format (e.g., +5511999999999)")
 	}
-	
+
 	return nil
 }
-
 
 func (v *Validator) ValidatePagination(limit, offset int) (int, int, error) {
 
@@ -276,39 +248,37 @@ func (v *Validator) ValidatePagination(limit, offset int) (int, int, error) {
 	if offset < 0 {
 		offset = 0
 	}
-	
 
 	if limit > 100 {
 		limit = 100
 	}
-	
+
 	return limit, offset, nil
 }
-
 
 func (v *Validator) ValidateDateRange(dateFrom, dateTo string) (time.Time, time.Time, error) {
 	var from, to time.Time
 	var err error
-	
+
 	layout := "2006-01-02"
-	
+
 	if dateFrom != "" {
 		from, err = time.Parse(layout, dateFrom)
 		if err != nil {
 			return from, to, fmt.Errorf("invalid date_from format, use YYYY-MM-DD")
 		}
 	}
-	
+
 	if dateTo != "" {
 		to, err = time.Parse(layout, dateTo)
 		if err != nil {
 			return from, to, fmt.Errorf("invalid date_to format, use YYYY-MM-DD")
 		}
 	}
-	
+
 	if !from.IsZero() && !to.IsZero() && from.After(to) {
 		return from, to, fmt.Errorf("date_from cannot be after date_to")
 	}
-	
+
 	return from, to, nil
 }

@@ -11,13 +11,12 @@ import (
 	"github.com/google/uuid"
 )
 
-
 type SessionRepository interface {
 	Create(session *models.Session) error
 	GetByID(id uuid.UUID) (*models.Session, error)
-	GetBySessionID(sessionID string) (*models.Session, error)             // Busca por UUID string
-	GetByName(name string) (*models.Session, error) // Busca por nome
-	GetByIdentifier(identifier string) (*models.Session, error) // Busca por UUID ou nome (dual mode)
+	GetBySessionID(sessionID string) (*models.Session, error)
+	GetByName(name string) (*models.Session, error)
+	GetByIdentifier(identifier string) (*models.Session, error)
 	GetByAPIKey(apiKey string) (*models.Session, error)
 	GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error)
 	Update(session *models.Session) error
@@ -28,19 +27,17 @@ type SessionRepository interface {
 	ClearQRCode(identifier string) error
 	Delete(id uuid.UUID) error
 	DeleteByIdentifier(identifier string) error
-	DeleteBySessionID(sessionID string) error // Remove por UUID string
+	DeleteBySessionID(sessionID string) error
 	Exists(identifier string) (bool, error)
 	Count() (int, error)
 	GetActiveConnections() ([]*models.Session, error)
 	Close() error
 }
 
-
 type sessionRepository struct {
 	db     *sql.DB
 	logger logger.Logger
 }
-
 
 func NewSessionRepository(db *sql.DB) SessionRepository {
 	return &sessionRepository{
@@ -49,17 +46,14 @@ func NewSessionRepository(db *sql.DB) SessionRepository {
 	}
 }
 
-
 func (r *sessionRepository) Create(session *models.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session data: %w", err)
 	}
 
-
 	if session.ID == uuid.Nil {
 		session.ID = uuid.New()
 	}
-
 
 	now := time.Now()
 	session.CreatedAt = now
@@ -90,12 +84,11 @@ func (r *sessionRepository) Create(session *models.Session) error {
 	return nil
 }
 
-
 func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	query := `
 		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qrcode
+		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qr_code
 		FROM sessions WHERE id = $1
 	`
 
@@ -115,14 +108,12 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
-
 	if qrcode.Valid {
 		session.QRCode = &qrcode.String
 	}
 
 	return session, nil
 }
-
 
 func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, error) {
 
@@ -131,24 +122,23 @@ func (r *sessionRepository) GetBySessionID(sessionID string) (*models.Session, e
 		return nil, fmt.Errorf("invalid session ID format: %w", err)
 	}
 
-
 	return r.GetByID(id)
 }
-
 
 func (r *sessionRepository) GetByName(name string) (*models.Session, error) {
 	query := `
 		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
+		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qr_code
 		FROM sessions WHERE name = $1
 	`
 
 	session := &models.Session{}
+	var qrcode sql.NullString
 	err := r.db.QueryRow(query, name).Scan(
 		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
-		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
+		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
 	)
 
 	if err != nil {
@@ -159,9 +149,12 @@ func (r *sessionRepository) GetByName(name string) (*models.Session, error) {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
+	if qrcode.Valid {
+		session.QRCode = &qrcode.String
+	}
+
 	return session, nil
 }
-
 
 func (r *sessionRepository) GetByIdentifier(identifier string) (*models.Session, error) {
 
@@ -169,10 +162,8 @@ func (r *sessionRepository) GetByIdentifier(identifier string) (*models.Session,
 		return r.GetByID(id)
 	}
 
-
 	return r.GetByName(identifier)
 }
-
 
 func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) {
 	query := `
@@ -200,12 +191,10 @@ func (r *sessionRepository) GetByAPIKey(apiKey string) (*models.Session, error) 
 	return session, nil
 }
 
-
 func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.SessionListResponse, error) {
 	if filter == nil {
 		filter = &models.SessionFilter{}
 	}
-
 
 	if filter.Page <= 0 {
 		filter.Page = 1
@@ -219,7 +208,6 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	if filter.OrderDir == "" {
 		filter.OrderDir = "DESC"
 	}
-
 
 	var conditions []string
 	var args []interface{}
@@ -254,7 +242,6 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM sessions %s", whereClause)
 	var total int
 	err := r.db.QueryRow(countQuery, args...).Scan(&total)
@@ -262,7 +249,6 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 		r.logger.Error().Err(err).Msg("Failed to count sessions")
 		return nil, fmt.Errorf("failed to count sessions: %w", err)
 	}
-
 
 	offset := (filter.Page - 1) * filter.PerPage
 	query := fmt.Sprintf(`
@@ -314,7 +300,6 @@ func (r *sessionRepository) GetAll(filter *models.SessionFilter) (*models.Sessio
 	}, nil
 }
 
-
 func (r *sessionRepository) Update(session *models.Session) error {
 	if err := session.Validate(); err != nil {
 		return fmt.Errorf("invalid session data: %w", err)
@@ -354,7 +339,6 @@ func (r *sessionRepository) Update(session *models.Session) error {
 	return nil
 }
 
-
 func (r *sessionRepository) UpdateStatus(sessionID string, status models.SessionStatus) error {
 	now := time.Now()
 	var lastConnectedAt *time.Time
@@ -362,7 +346,6 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 	if status == models.SessionStatusConnected || status == models.SessionStatusAuthenticated {
 		lastConnectedAt = &now
 	}
-
 
 	var query string
 	if _, err := uuid.Parse(sessionID); err == nil {
@@ -398,7 +381,6 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 	return nil
 }
 
-
 func (r *sessionRepository) UpdateStatusAndJID(identifier string, status models.SessionStatus, jid *string) error {
 	var query string
 	var args []interface{}
@@ -407,7 +389,6 @@ func (r *sessionRepository) UpdateStatusAndJID(identifier string, status models.
 	now := time.Now()
 	var lastConnectedAt *time.Time
 
-	// Set last_connected_at only for connected/authenticated status
 	if status == models.SessionStatusConnected || status == models.SessionStatusAuthenticated {
 		lastConnectedAt = &now
 	}
@@ -451,11 +432,9 @@ func (r *sessionRepository) UpdateStatusAndJID(identifier string, status models.
 	return nil
 }
 
-
 func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
 	var query string
 	var args []interface{}
-
 
 	if id, err := uuid.Parse(identifier); err == nil {
 		query = `
@@ -497,16 +476,14 @@ func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
 	return nil
 }
 
-
 func (r *sessionRepository) UpdateQRCode(identifier string, qrCode string) error {
 	var query string
 	var args []interface{}
 
-
 	if id, err := uuid.Parse(identifier); err == nil {
 		query = `
 			UPDATE sessions
-			SET qrcode = $1, updated_at = CURRENT_TIMESTAMP
+			SET qr_code = $1, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $2
 		`
 		args = []interface{}{qrCode, id}
@@ -514,7 +491,7 @@ func (r *sessionRepository) UpdateQRCode(identifier string, qrCode string) error
 
 		query = `
 			UPDATE sessions
-			SET qrcode = $1, updated_at = CURRENT_TIMESTAMP
+			SET qr_code = $1, updated_at = CURRENT_TIMESTAMP
 			WHERE name = $2
 		`
 		args = []interface{}{qrCode, identifier}
@@ -543,11 +520,10 @@ func (r *sessionRepository) ClearQRCode(identifier string) error {
 	var query string
 	var args []interface{}
 
-
 	if id, err := uuid.Parse(identifier); err == nil {
 		query = `
 			UPDATE sessions
-			SET qrcode = NULL, updated_at = CURRENT_TIMESTAMP
+			SET qr_code = NULL, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
 		`
 		args = []interface{}{id}
@@ -555,7 +531,7 @@ func (r *sessionRepository) ClearQRCode(identifier string) error {
 
 		query = `
 			UPDATE sessions
-			SET qrcode = NULL, updated_at = CURRENT_TIMESTAMP
+			SET qr_code = NULL, updated_at = CURRENT_TIMESTAMP
 			WHERE name = $1
 		`
 		args = []interface{}{identifier}
@@ -580,9 +556,8 @@ func (r *sessionRepository) ClearQRCode(identifier string) error {
 	return nil
 }
 
-
 func (r *sessionRepository) Delete(id uuid.UUID) error {
-	// Primeiro, obter o JID da sessão para limpar dados do WhatsApp
+
 	var jid sql.NullString
 	jidQuery := "SELECT jid FROM sessions WHERE id = $1"
 	err := r.db.QueryRow(jidQuery, id).Scan(&jid)
@@ -591,19 +566,15 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 		return fmt.Errorf("failed to get session JID: %w", err)
 	}
 
-	// Iniciar transação para garantir consistência
 	tx, err := r.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Se há JID, limpar dados do WhatsApp primeiro
 	if jid.Valid && jid.String != "" {
 		r.logger.Info().Str("id", id.String()).Str("jid", jid.String).Msg("Cleaning up WhatsApp data for session")
 
-		// Deletar apenas whatsmeow_device - as outras tabelas serão limpas automaticamente
-		// devido às foreign keys CASCADE que já existem no whatsmeow
 		deleteQuery := "DELETE FROM whatsmeow_device WHERE jid = $1"
 		result, err := tx.Exec(deleteQuery, jid.String)
 		if err != nil {
@@ -615,7 +586,6 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 		}
 	}
 
-	// Deletar a sessão
 	sessionQuery := "DELETE FROM sessions WHERE id = $1"
 	result, err := tx.Exec(sessionQuery, id)
 	if err != nil {
@@ -632,7 +602,6 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 		return fmt.Errorf("session not found")
 	}
 
-	// Commit da transação
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -641,7 +610,6 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-
 func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
 
 	id, err := uuid.Parse(sessionID)
@@ -649,13 +617,11 @@ func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
 		return fmt.Errorf("invalid session ID format: %w", err)
 	}
 
-
 	return r.Delete(id)
 }
 
-
 func (r *sessionRepository) DeleteByName(name string) error {
-	// Primeiro, obter o ID e JID da sessão
+
 	var id uuid.UUID
 	var jid sql.NullString
 	query := "SELECT id, jid FROM sessions WHERE name = $1"
@@ -668,10 +634,8 @@ func (r *sessionRepository) DeleteByName(name string) error {
 		return fmt.Errorf("failed to get session info: %w", err)
 	}
 
-	// Usar o método Delete principal que já tem a lógica de limpeza
 	return r.Delete(id)
 }
-
 
 func (r *sessionRepository) DeleteByIdentifier(identifier string) error {
 
@@ -679,11 +643,8 @@ func (r *sessionRepository) DeleteByIdentifier(identifier string) error {
 		return r.Delete(id)
 	}
 
-
 	return r.DeleteByName(identifier)
 }
-
-
 
 func (r *sessionRepository) Exists(identifier string) (bool, error) {
 
@@ -698,7 +659,6 @@ func (r *sessionRepository) Exists(identifier string) (bool, error) {
 		return exists, nil
 	}
 
-
 	query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE name = $1)"
 	var exists bool
 	err := r.db.QueryRow(query, identifier).Scan(&exists)
@@ -709,7 +669,6 @@ func (r *sessionRepository) Exists(identifier string) (bool, error) {
 
 	return exists, nil
 }
-
 
 func (r *sessionRepository) Count() (int, error) {
 	query := "SELECT COUNT(*) FROM sessions"
@@ -723,7 +682,6 @@ func (r *sessionRepository) Count() (int, error) {
 
 	return count, nil
 }
-
 
 func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	query := `
@@ -764,7 +722,6 @@ func (r *sessionRepository) GetActiveConnections() ([]*models.Session, error) {
 	r.logger.Debug().Int("count", len(sessions)).Msg("Retrieved active connections")
 	return sessions, nil
 }
-
 
 func (r *sessionRepository) Close() error {
 	return r.db.Close()

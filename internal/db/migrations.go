@@ -12,14 +12,6 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 )
 
-
-
-
-
-
-
-
-
 type Migration struct {
 	Version     int
 	Description string
@@ -27,12 +19,10 @@ type Migration struct {
 	Down        string
 }
 
-
 type Migrator struct {
 	db     *sql.DB
 	logger logger.Logger
 }
-
 
 func NewMigrator(db *sql.DB) *Migrator {
 	return &Migrator{
@@ -40,7 +30,6 @@ func NewMigrator(db *sql.DB) *Migrator {
 		logger: logger.Get(),
 	}
 }
-
 
 func (m *Migrator) GetMigrations() []Migration {
 	migrations, err := m.loadMigrationsFromFiles()
@@ -51,10 +40,8 @@ func (m *Migrator) GetMigrations() []Migration {
 	return migrations
 }
 
-
 func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 	migrationsDir := "internal/db/migrations"
-
 
 	files, err := filepath.Glob(filepath.Join(migrationsDir, "*_up.sql"))
 	if err != nil {
@@ -81,13 +68,11 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 			continue
 		}
 
-
 		upSQL, err := os.ReadFile(upFile)
 		if err != nil {
 			m.logger.Error().Err(err).Str("file", upFile).Msg("Failed to read up migration file")
 			continue
 		}
-
 
 		downFile := strings.Replace(upFile, "_up.sql", "_down.sql", 1)
 		downSQL, err := os.ReadFile(downFile)
@@ -95,7 +80,6 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 			m.logger.Error().Err(err).Str("file", downFile).Msg("Failed to read down migration file")
 			continue
 		}
-
 
 		description := strings.Join(parts[1:], "_")
 		description = strings.TrimSuffix(description, "_up.sql")
@@ -109,7 +93,6 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 		})
 	}
 
-
 	sort.Slice(migrations, func(i, j int) bool {
 		return migrations[i].Version < migrations[j].Version
 	})
@@ -118,16 +101,13 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 	return migrations, nil
 }
 
-
 func (m *Migrator) getFallbackMigrations() []Migration {
 	m.logger.Warn().Msg("No SQL migration files found - please ensure migration files exist in internal/db/migrations/")
 	return []Migration{}
 }
 
-
 func (m *Migrator) Run() error {
 	m.logger.Info().Msg("Starting database migrations")
-
 
 	if err := m.createMigrationsTable(); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
@@ -158,7 +138,6 @@ func (m *Migrator) Run() error {
 	return nil
 }
 
-
 func (m *Migrator) createMigrationsTable() error {
 	query := `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -170,7 +149,6 @@ func (m *Migrator) createMigrationsTable() error {
 	_, err := m.db.Exec(query)
 	return err
 }
-
 
 func (m *Migrator) getAppliedVersions() (map[int]bool, error) {
 	query := "SELECT version FROM schema_migrations"
@@ -192,11 +170,9 @@ func (m *Migrator) getAppliedVersions() (map[int]bool, error) {
 	return applied, rows.Err()
 }
 
-
 func (m *Migrator) isApplied(version int, applied map[int]bool) bool {
 	return applied[version]
 }
-
 
 func (m *Migrator) applyMigration(migration Migration) error {
 	tx, err := m.db.Begin()
@@ -205,11 +181,9 @@ func (m *Migrator) applyMigration(migration Migration) error {
 	}
 	defer tx.Rollback()
 
-
 	if _, err := tx.Exec(migration.Up); err != nil {
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
-
 
 	if _, err := tx.Exec(
 		"INSERT INTO schema_migrations (version, description) VALUES ($1, $2)",
@@ -220,7 +194,6 @@ func (m *Migrator) applyMigration(migration Migration) error {
 
 	return tx.Commit()
 }
-
 
 func (m *Migrator) Rollback(version int) error {
 	migrations := m.GetMigrations()
@@ -245,11 +218,9 @@ func (m *Migrator) Rollback(version int) error {
 	}
 	defer tx.Rollback()
 
-
 	if _, err := tx.Exec(targetMigration.Down); err != nil {
 		return fmt.Errorf("failed to execute rollback SQL: %w", err)
 	}
-
 
 	if _, err := tx.Exec("DELETE FROM schema_migrations WHERE version = $1", version); err != nil {
 		return fmt.Errorf("failed to remove migration record: %w", err)
@@ -262,7 +233,6 @@ func (m *Migrator) Rollback(version int) error {
 	m.logger.Info().Int("version", version).Msg("Migration rolled back successfully")
 	return nil
 }
-
 
 func (m *Migrator) Status() ([]MigrationStatus, error) {
 	migrations := m.GetMigrations()
@@ -283,13 +253,11 @@ func (m *Migrator) Status() ([]MigrationStatus, error) {
 	return status, nil
 }
 
-
 type MigrationStatus struct {
 	Version     int    `json:"version"`
 	Description string `json:"description"`
 	Applied     bool   `json:"applied"`
 }
-
 
 func (m *Migrator) GetAppliedVersions() (map[int]bool, error) {
 	return m.getAppliedVersions()

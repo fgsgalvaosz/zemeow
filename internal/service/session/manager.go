@@ -81,7 +81,7 @@ func (m *Manager) CreateSession(sessionID string, name string, token string) (*m
 	sessionUUID := uuid.New()
 	session := &models.Session{
 		ID:        sessionUUID,
-		Name:      name, // nome fornecido pelo usuário
+		Name:      name,
 		Status:    models.SessionStatusDisconnected,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -164,11 +164,8 @@ func (m *Manager) GetSessionStatus(sessionID string) (models.SessionStatus, erro
 }
 
 func (m *Manager) GetQRCode(sessionID string) (interface{}, error) {
-	// Multi-device architecture: Connect session which will:
-	// 1. Check if device exists in container (GetFirstDevice)
-	// 2. If exists: reconnect directly (no QR needed)
-	// 3. If not exists: create new device (NewDevice) and generate QR
-	qrData, err := m.whatsappMgr.ConnectSession(sessionID)
+
+	qrData, err := m.whatsappMgr.GetQRCode(sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +178,11 @@ func (m *Manager) GetQRCode(sessionID string) (interface{}, error) {
 }
 
 func (m *Manager) GetClient(sessionID string) (interface{}, error) {
-	return m.whatsappMgr.GetClient(sessionID)
+	client := m.whatsappMgr.GetClient(sessionID)
+	if client == nil {
+		return nil, fmt.Errorf("client not found for session %s", sessionID)
+	}
+	return client, nil
 }
 
 func (m *Manager) PairPhone(sessionID string, phoneNumber string) error {
@@ -236,7 +237,6 @@ func (m *Manager) ClearCache() {
 	m.cache.Clear()
 }
 
-
 func (m *Manager) InitializeNewSession(session *models.Session) error {
 	return m.whatsappMgr.InitializeSession(session)
 }
@@ -249,7 +249,6 @@ func (m *Manager) EmitLifecycleEvent(sessionID string, eventType LifecycleEventT
 	m.lifecycle.EmitEvent(sessionID, eventType, data)
 }
 
-// GetWebhookChannel returns the webhook event channel from WhatsApp manager
 func (m *Manager) GetWebhookChannel() <-chan meow.WebhookEvent {
 	return m.whatsappMgr.GetWebhookChannel()
 }

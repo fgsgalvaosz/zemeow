@@ -10,7 +10,6 @@ import (
 	"github.com/lib/pq"
 )
 
-
 type SessionStatus string
 
 const (
@@ -20,7 +19,6 @@ const (
 	SessionStatusAuthenticated SessionStatus = "authenticated"
 	SessionStatusError         SessionStatus = "error"
 )
-
 
 type Session struct {
 	ID               uuid.UUID      `json:"id" db:"id"`
@@ -46,16 +44,13 @@ type Session struct {
 	QRCode           *string        `json:"qr_code,omitempty" db:"qrcode"`
 }
 
-
 func (s *Session) GetSessionID() string {
 	return s.ID.String()
 }
 
-
 func (s *Session) GetIdentifier() string {
 	return s.ID.String()
 }
-
 
 func (s *Session) IsValidName() bool {
 	if len(s.Name) < 3 || len(s.Name) > 50 {
@@ -73,7 +68,6 @@ func (s *Session) IsValidName() bool {
 	return true
 }
 
-
 type SessionConfig struct {
 	SessionID     string         `json:"session_id"`
 	Name          string         `json:"name"`
@@ -83,16 +77,14 @@ type SessionConfig struct {
 	Timeout       time.Duration  `json:"timeout"`
 }
 
-
 type ProxyConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
-	Type     string `json:"type"` // http, socks5
+	Type     string `json:"type"`
 }
-
 
 type WebhookConfig struct {
 	URL    string   `json:"url"`
@@ -100,9 +92,7 @@ type WebhookConfig struct {
 	Secret string   `json:"secret,omitempty"`
 }
 
-
 type Metadata map[string]interface{}
-
 
 func (m Metadata) Value() (driver.Value, error) {
 	if m == nil {
@@ -110,7 +100,6 @@ func (m Metadata) Value() (driver.Value, error) {
 	}
 	return json.Marshal(m)
 }
-
 
 func (m *Metadata) Scan(value interface{}) error {
 	if value == nil {
@@ -128,7 +117,6 @@ func (m *Metadata) Scan(value interface{}) error {
 	}
 }
 
-
 type CreateSessionRequest struct {
 	SessionID string         `json:"session_id" validate:"omitempty,min=3,max=255"`
 	Name      string         `json:"name" validate:"required,min=1,max=255"`
@@ -137,14 +125,12 @@ type CreateSessionRequest struct {
 	Webhook   *WebhookConfig `json:"webhook,omitempty"`
 }
 
-
 type UpdateSessionRequest struct {
 	Name     *string        `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 	Proxy    *ProxyConfig   `json:"proxy,omitempty"`
 	Webhook  *WebhookConfig `json:"webhook,omitempty"`
 	Metadata *Metadata      `json:"metadata,omitempty"`
 }
-
 
 type SessionListResponse struct {
 	Sessions   []Session `json:"sessions"`
@@ -154,14 +140,12 @@ type SessionListResponse struct {
 	TotalPages int       `json:"total_pages"`
 }
 
-
 type SessionInfoResponse struct {
 	*Session
 	IsConnected    bool               `json:"is_connected"`
 	ConnectionInfo *ConnectionInfo    `json:"connection_info,omitempty"`
 	Statistics     *SessionStatistics `json:"statistics,omitempty"`
 }
-
 
 type ConnectionInfo struct {
 	JID          string    `json:"jid"`
@@ -174,7 +158,6 @@ type ConnectionInfo struct {
 	Platform     string    `json:"platform"`
 }
 
-
 type SessionStatistics struct {
 	MessagesReceived int       `json:"messages_received"`
 	MessagesSent     int       `json:"messages_sent"`
@@ -183,25 +166,21 @@ type SessionStatistics struct {
 	LastActivity     time.Time `json:"last_activity"`
 }
 
-
 type QRCodeResponse struct {
 	QRCode    string    `json:"qr_code"`
 	Timeout   int       `json:"timeout_seconds"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-
 type PairPhoneRequest struct {
 	PhoneNumber string `json:"phone_number" validate:"required,e164"`
 }
-
 
 type PairPhoneResponse struct {
 	Code      string    `json:"code"`
 	Timeout   int       `json:"timeout_seconds"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
-
 
 type SessionFilter struct {
 	Status    *SessionStatus `json:"status,omitempty"`
@@ -213,7 +192,6 @@ type SessionFilter struct {
 	OrderBy   string         `json:"order_by"`
 	OrderDir  string         `json:"order_dir"`
 }
-
 
 func (s *Session) Validate() error {
 	if s.Name == "" {
@@ -228,11 +206,9 @@ func (s *Session) Validate() error {
 	return nil
 }
 
-
 func (s *Session) IsConnected() bool {
 	return s.Status == SessionStatusConnected || s.Status == SessionStatusAuthenticated
 }
-
 
 func (s *Session) GetProxyConfig() *ProxyConfig {
 	if !s.ProxyEnabled || s.ProxyHost == nil || s.ProxyPort == nil {
@@ -243,7 +219,7 @@ func (s *Session) GetProxyConfig() *ProxyConfig {
 		Enabled: s.ProxyEnabled,
 		Host:    *s.ProxyHost,
 		Port:    *s.ProxyPort,
-		Type:    "http", // default
+		Type:    "http",
 	}
 
 	if s.ProxyUsername != nil {
@@ -256,7 +232,6 @@ func (s *Session) GetProxyConfig() *ProxyConfig {
 	return config
 }
 
-
 func (s *Session) GetWebhookConfig() *WebhookConfig {
 	if s.WebhookURL == nil {
 		return nil
@@ -267,7 +242,6 @@ func (s *Session) GetWebhookConfig() *WebhookConfig {
 		Events: []string(s.WebhookEvents),
 	}
 }
-
 
 func (s *Session) SetProxyConfig(config *ProxyConfig) {
 	if config == nil || !config.Enabled {
@@ -291,7 +265,6 @@ func (s *Session) SetProxyConfig(config *ProxyConfig) {
 	}
 }
 
-
 func (s *Session) SetWebhookConfig(config *WebhookConfig) {
 	if config == nil || config.URL == "" {
 		s.WebhookURL = nil
@@ -302,7 +275,6 @@ func (s *Session) SetWebhookConfig(config *WebhookConfig) {
 	s.WebhookURL = &config.URL
 	s.WebhookEvents = pq.StringArray(config.Events)
 }
-
 
 func (s *Session) UpdateStatus(status SessionStatus) {
 	s.Status = status

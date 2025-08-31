@@ -1,36 +1,44 @@
 package message
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
+	waE2E "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	waE2E "go.mau.fi/whatsmeow/binary/proto"
 
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/media"
 )
 
-// PersistenceService gerencia a persistência de mensagens do WhatsApp
-type PersistenceService struct {
-	messageRepo repositories.MessageRepository
-	logger      logger.Logger
+type ClientProvider interface {
+	GetClient(sessionID string) *whatsmeow.Client
 }
 
-// NewPersistenceService cria uma nova instância do PersistenceService
-func NewPersistenceService(messageRepo repositories.MessageRepository) *PersistenceService {
+type PersistenceService struct {
+	messageRepo    repositories.MessageRepository
+	mediaService   *media.MediaService
+	clientProvider ClientProvider
+	logger         logger.Logger
+}
+
+func NewPersistenceService(messageRepo repositories.MessageRepository, mediaService *media.MediaService, clientProvider ClientProvider) *PersistenceService {
 	return &PersistenceService{
-		messageRepo: messageRepo,
-		logger:      logger.GetWithSession("message_persistence"),
+		messageRepo:    messageRepo,
+		mediaService:   mediaService,
+		clientProvider: clientProvider,
+		logger:         logger.GetWithSession("message_persistence"),
 	}
 }
 
-// ProcessMessageEvent processa um evento de mensagem do WhatsApp e persiste no banco
 func (s *PersistenceService) ProcessMessageEvent(sessionID uuid.UUID, evt *events.Message) error {
 	message, err := s.convertEventToMessage(sessionID, evt)
 	if err != nil {
@@ -38,21 +46,23 @@ func (s *PersistenceService) ProcessMessageEvent(sessionID uuid.UUID, evt *event
 		return fmt.Errorf("failed to convert event to message: %w", err)
 	}
 
-	// Verificar se a mensagem já existe
 	existing, err := s.messageRepo.GetByMessageID(sessionID, evt.Info.ID)
 	if err == nil && existing != nil {
-		// Mensagem já existe, atualizar se necessário
+
 		s.logger.Debug().Str("message_id", evt.Info.ID).Msg("Message already exists, updating")
 		message.ID = existing.ID
 		message.CreatedAt = existing.CreatedAt
 		return s.messageRepo.Update(message)
 	}
 
-	// Criar nova mensagem
 	err = s.messageRepo.Create(message)
 	if err != nil {
 		s.logger.Error().Err(err).Str("message_id", evt.Info.ID).Msg("Failed to persist message")
 		return fmt.Errorf("failed to persist message: %w", err)
+	}
+
+	if s.hasMediaContent(message) {
+		go s.processMediaContent(sessionID, evt, message)
 	}
 
 	s.logger.Debug().
@@ -65,14 +75,13 @@ func (s *PersistenceService) ProcessMessageEvent(sessionID uuid.UUID, evt *event
 	return nil
 }
 
-// ProcessReceiptEvent processa um evento de confirmação de leitura/entrega
 func (s *PersistenceService) ProcessReceiptEvent(sessionID uuid.UUID, evt *events.Receipt) error {
 	if len(evt.MessageIDs) == 0 {
 		return nil
 	}
 
 	status := s.convertReceiptTypeToStatus(evt.Type)
-	
+
 	for _, messageID := range evt.MessageIDs {
 		message, err := s.messageRepo.GetByMessageID(sessionID, messageID)
 		if err != nil {
@@ -80,7 +89,6 @@ func (s *PersistenceService) ProcessReceiptEvent(sessionID uuid.UUID, evt *event
 			continue
 		}
 
-		// Atualizar apenas se o novo status for "superior" ao atual
 		if s.shouldUpdateStatus(message.Status, status) {
 			message.Status = status
 			err = s.messageRepo.Update(message)
@@ -98,24 +106,22 @@ func (s *PersistenceService) ProcessReceiptEvent(sessionID uuid.UUID, evt *event
 	return nil
 }
 
-// convertEventToMessage converte um evento de mensagem do WhatsApp para o modelo interno
 func (s *PersistenceService) convertEventToMessage(sessionID uuid.UUID, evt *events.Message) (*models.Message, error) {
 	message := &models.Message{
-		SessionID:         sessionID,
-		MessageID:         evt.Info.ID,
-		ChatJID:           evt.Info.Chat.String(),
-		SenderJID:         evt.Info.Sender.String(),
-		Direction:         s.getMessageDirection(evt.Info.IsFromMe),
-		Status:            string(models.MessageStatusReceived),
-		IsFromMe:          evt.Info.IsFromMe,
-		IsEphemeral:       evt.IsEphemeral,
-		IsViewOnce:        evt.IsViewOnce,
-		IsForwarded:       s.isForwardedMessage(evt.Message),
-		Timestamp:         evt.Info.Timestamp,
-		ContextInfo:       make(models.JSONB),
+		SessionID:   sessionID,
+		MessageID:   evt.Info.ID,
+		ChatJID:     evt.Info.Chat.String(),
+		SenderJID:   evt.Info.Sender.String(),
+		Direction:   s.getMessageDirection(evt.Info.IsFromMe),
+		Status:      string(models.MessageStatusReceived),
+		IsFromMe:    evt.Info.IsFromMe,
+		IsEphemeral: evt.IsEphemeral,
+		IsViewOnce:  evt.IsViewOnce,
+		IsForwarded: s.isForwardedMessage(evt.Message),
+		Timestamp:   evt.Info.Timestamp,
+		ContextInfo: make(models.JSONB),
 	}
 
-	// Serializar mensagem completa como JSON
 	rawMessage, err := json.Marshal(evt.Message)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("Failed to marshal raw message")
@@ -123,21 +129,18 @@ func (s *PersistenceService) convertEventToMessage(sessionID uuid.UUID, evt *eve
 		message.RawMessage = rawMessage
 	}
 
-	// Processar diferentes tipos de mensagem
 	err = s.processMessageContent(message, evt.Message)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process message content: %w", err)
 	}
 
-	// Processar informações de contexto (reply, mentions, etc.)
 	s.processContextInfo(message, evt.Message)
 
-	// Definir recipient_jid para mensagens diretas
 	if evt.Info.Chat.Server != types.GroupServer && evt.Info.Chat.Server != types.BroadcastServer {
 		if evt.Info.IsFromMe {
 			message.RecipientJID = &message.ChatJID
 		} else {
-			ourJID := evt.Info.Chat.String() // Em chat direto, chat_jid é o JID do outro usuário
+			ourJID := evt.Info.Chat.String()
 			message.RecipientJID = &ourJID
 		}
 	}
@@ -145,7 +148,6 @@ func (s *PersistenceService) convertEventToMessage(sessionID uuid.UUID, evt *eve
 	return message, nil
 }
 
-// processMessageContent processa o conteúdo específico de cada tipo de mensagem
 func (s *PersistenceService) processMessageContent(message *models.Message, waMsg *waE2E.Message) error {
 	switch {
 	case waMsg.Conversation != nil:
@@ -236,7 +238,6 @@ func (s *PersistenceService) processMessageContent(message *models.Message, waMs
 	return nil
 }
 
-// MediaInfo estrutura auxiliar para informações de mídia
 type MediaInfo struct {
 	URL      *string
 	MimeType *string
@@ -246,7 +247,6 @@ type MediaInfo struct {
 	Filename *string
 }
 
-// processMediaMessage processa mensagens de mídia
 func (s *PersistenceService) processMediaMessage(message *models.Message, media *MediaInfo) {
 	if media.URL != nil {
 		message.MediaURL = media.URL
@@ -270,7 +270,6 @@ func (s *PersistenceService) processMediaMessage(message *models.Message, media 
 	}
 }
 
-// processLocationMessage processa mensagens de localização
 func (s *PersistenceService) processLocationMessage(message *models.Message, loc *waE2E.LocationMessage) {
 	if loc.DegreesLatitude != nil {
 		lat := float64(*loc.DegreesLatitude)
@@ -288,21 +287,19 @@ func (s *PersistenceService) processLocationMessage(message *models.Message, loc
 	}
 }
 
-// processContactMessage processa mensagens de contato
 func (s *PersistenceService) processContactMessage(message *models.Message, contact *waE2E.ContactMessage) {
 	if contact.DisplayName != nil {
 		message.ContactName = contact.DisplayName
 	}
 	if contact.Vcard != nil {
 		message.ContactVCard = contact.Vcard
-		// Extrair telefone do vCard se possível
+
 		if phone := s.extractPhoneFromVCard(*contact.Vcard); phone != "" {
 			message.ContactPhone = &phone
 		}
 	}
 }
 
-// processGroupInviteMessage processa mensagens de convite de grupo
 func (s *PersistenceService) processGroupInviteMessage(message *models.Message, invite *waE2E.GroupInviteMessage) {
 	if invite.InviteCode != nil {
 		message.GroupInviteCode = invite.InviteCode
@@ -316,7 +313,6 @@ func (s *PersistenceService) processGroupInviteMessage(message *models.Message, 
 	}
 }
 
-// processPollMessage processa mensagens de enquete
 func (s *PersistenceService) processPollMessage(message *models.Message, poll *waE2E.PollCreationMessage) {
 	if poll.Name != nil {
 		message.PollName = poll.Name
@@ -327,7 +323,6 @@ func (s *PersistenceService) processPollMessage(message *models.Message, poll *w
 		message.PollSelectableCount = &count
 	}
 
-	// Processar opções da enquete
 	if len(poll.Options) > 0 {
 		options := make([]map[string]interface{}, len(poll.Options))
 		for i, option := range poll.Options {
@@ -341,7 +336,6 @@ func (s *PersistenceService) processPollMessage(message *models.Message, poll *w
 	}
 }
 
-// processReactionMessage processa mensagens de reação
 func (s *PersistenceService) processReactionMessage(message *models.Message, reaction *waE2E.ReactionMessage) {
 	if reaction.Text != nil {
 		message.ReactionEmoji = reaction.Text
@@ -350,16 +344,13 @@ func (s *PersistenceService) processReactionMessage(message *models.Message, rea
 		message.ReplyToMessageID = reaction.Key.ID
 	}
 
-	// Timestamp da reação
 	reactionTime := time.Now()
 	message.ReactionTimestamp = &reactionTime
 }
 
-// processContextInfo processa informações de contexto da mensagem
 func (s *PersistenceService) processContextInfo(message *models.Message, waMsg *waE2E.Message) {
 	var contextInfo *waE2E.ContextInfo
 
-	// Extrair ContextInfo de diferentes tipos de mensagem
 	switch {
 	case waMsg.ExtendedTextMessage != nil:
 		contextInfo = waMsg.ExtendedTextMessage.ContextInfo
@@ -382,13 +373,12 @@ func (s *PersistenceService) processContextInfo(message *models.Message, waMsg *
 	}
 }
 
-// processExtendedContextInfo processa informações de contexto estendidas
 func (s *PersistenceService) processExtendedContextInfo(message *models.Message, contextInfo *waE2E.ContextInfo) {
-	// Mensagem citada
+
 	if contextInfo.StanzaID != nil {
 		message.ReplyToMessageID = contextInfo.StanzaID
 		if contextInfo.QuotedMessage != nil {
-			// Extrair conteúdo da mensagem citada
+
 			quotedContent := s.extractQuotedContent(contextInfo.QuotedMessage)
 			if quotedContent != "" {
 				message.QuotedContent = &quotedContent
@@ -396,7 +386,6 @@ func (s *PersistenceService) processExtendedContextInfo(message *models.Message,
 		}
 	}
 
-	// Menções
 	if len(contextInfo.MentionedJID) > 0 {
 		mentions := make([]string, len(contextInfo.MentionedJID))
 		for i, jid := range contextInfo.MentionedJID {
@@ -405,13 +394,11 @@ func (s *PersistenceService) processExtendedContextInfo(message *models.Message,
 		message.Mentions = mentions
 	}
 
-	// Informações adicionais no contexto
 	if contextInfo.IsForwarded != nil && *contextInfo.IsForwarded {
 		message.IsForwarded = true
 	}
 }
 
-// extractQuotedContent extrai o conteúdo de uma mensagem citada
 func (s *PersistenceService) extractQuotedContent(quotedMsg *waE2E.Message) string {
 	switch {
 	case quotedMsg.Conversation != nil:
@@ -433,7 +420,6 @@ func (s *PersistenceService) extractQuotedContent(quotedMsg *waE2E.Message) stri
 	}
 }
 
-// extractPhoneFromVCard extrai o número de telefone de um vCard
 func (s *PersistenceService) extractPhoneFromVCard(vcard string) string {
 	lines := strings.Split(vcard, "\n")
 	for _, line := range lines {
@@ -450,7 +436,6 @@ func (s *PersistenceService) extractPhoneFromVCard(vcard string) string {
 	return ""
 }
 
-// getMessageDirection determina a direção da mensagem
 func (s *PersistenceService) getMessageDirection(isFromMe bool) string {
 	if isFromMe {
 		return string(models.MessageDirectionOutgoing)
@@ -458,9 +443,8 @@ func (s *PersistenceService) getMessageDirection(isFromMe bool) string {
 	return string(models.MessageDirectionIncoming)
 }
 
-// isForwardedMessage verifica se a mensagem foi encaminhada
 func (s *PersistenceService) isForwardedMessage(waMsg *waE2E.Message) bool {
-	// Verificar em diferentes tipos de mensagem
+
 	switch {
 	case waMsg.ExtendedTextMessage != nil && waMsg.ExtendedTextMessage.ContextInfo != nil:
 		return waMsg.ExtendedTextMessage.ContextInfo.IsForwarded != nil && *waMsg.ExtendedTextMessage.ContextInfo.IsForwarded
@@ -474,7 +458,6 @@ func (s *PersistenceService) isForwardedMessage(waMsg *waE2E.Message) bool {
 	return false
 }
 
-// convertReceiptTypeToStatus converte o tipo de confirmação para status da mensagem
 func (s *PersistenceService) convertReceiptTypeToStatus(receiptType types.ReceiptType) string {
 	switch receiptType {
 	case types.ReceiptTypeDelivered:
@@ -482,15 +465,14 @@ func (s *PersistenceService) convertReceiptTypeToStatus(receiptType types.Receip
 	case types.ReceiptTypeRead, types.ReceiptTypeReadSelf:
 		return string(models.MessageStatusRead)
 	case types.ReceiptTypePlayed:
-		return string(models.MessageStatusRead) // Áudio/vídeo reproduzido = lido
+		return string(models.MessageStatusRead)
 	default:
 		return string(models.MessageStatusDelivered)
 	}
 }
 
-// shouldUpdateStatus verifica se o status deve ser atualizado
 func (s *PersistenceService) shouldUpdateStatus(currentStatus, newStatus string) bool {
-	// Hierarquia de status: sent < delivered < read
+
 	statusHierarchy := map[string]int{
 		string(models.MessageStatusSent):      1,
 		string(models.MessageStatusDelivered): 2,
@@ -500,11 +482,238 @@ func (s *PersistenceService) shouldUpdateStatus(currentStatus, newStatus string)
 	currentLevel, currentExists := statusHierarchy[currentStatus]
 	newLevel, newExists := statusHierarchy[newStatus]
 
-	// Se algum status não está na hierarquia, não atualizar
 	if !currentExists || !newExists {
 		return false
 	}
 
-	// Atualizar apenas se o novo status for superior
 	return newLevel > currentLevel
+}
+
+func (s *PersistenceService) hasMediaContent(message *models.Message) bool {
+	return message.MessageType == "image" ||
+		message.MessageType == "video" ||
+		message.MessageType == "audio" ||
+		message.MessageType == "document" ||
+		message.MessageType == "sticker"
+}
+
+func (s *PersistenceService) processMediaContent(sessionID uuid.UUID, evt *events.Message, message *models.Message) {
+	if s.mediaService == nil {
+		s.logger.Warn().Str("message_id", evt.Info.ID).Msg("MediaService not available, skipping media processing")
+		return
+	}
+
+	client := s.clientProvider.GetClient(sessionID.String())
+	if client == nil {
+		s.logger.Error().Str("message_id", evt.Info.ID).Msg("WhatsApp client not available for media download")
+		return
+	}
+
+	mediaData, err := s.downloadMediaFromMessage(client, evt.Message)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("message_id", evt.Info.ID).
+			Str("message_type", message.MessageType).
+			Msg("Failed to download media from WhatsApp")
+		return
+	}
+
+	if mediaData == nil || len(mediaData.Data) == 0 {
+		s.logger.Warn().Str("message_id", evt.Info.ID).Msg("No media data to process")
+		return
+	}
+
+	direction := "incoming"
+	if evt.Info.IsFromMe {
+		direction = "outgoing"
+	}
+
+	uploadReq := &media.MediaUploadRequest{
+		SessionID:   sessionID.String(),
+		MessageID:   evt.Info.ID,
+		FileName:    mediaData.FileName,
+		ContentType: mediaData.MimeType,
+		Data:        mediaData.Data,
+		Direction:   direction,
+		ChatJID:     evt.Info.Chat.String(),
+		SenderJID:   evt.Info.Sender.String(),
+	}
+
+	mediaInfo, err := s.mediaService.UploadMedia(context.Background(), uploadReq)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("message_id", evt.Info.ID).
+			Str("session_id", sessionID.String()).
+			Msg("Failed to upload media to MinIO")
+		return
+	}
+
+	err = s.messageRepo.UpdateMinIOReferences(
+		message.ID,
+		mediaInfo.ID,
+		mediaInfo.Path,
+		mediaInfo.URL,
+		"zemeow-media",
+	)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("message_id", evt.Info.ID).
+			Str("media_id", mediaInfo.ID).
+			Msg("Failed to update MinIO references in database")
+		return
+	}
+
+	s.logger.Info().
+		Str("message_id", evt.Info.ID).
+		Str("session_id", sessionID.String()).
+		Str("media_id", mediaInfo.ID).
+		Str("minio_path", mediaInfo.Path).
+		Int64("size", mediaInfo.Size).
+		Str("direction", direction).
+		Msg("Media processed and saved to MinIO successfully")
+}
+
+type MediaData struct {
+	Data     []byte
+	MimeType string
+	FileName string
+}
+
+func (s *PersistenceService) downloadMediaFromMessage(client *whatsmeow.Client, waMsg *waE2E.Message) (*MediaData, error) {
+	var mediaData *MediaData
+	var err error
+
+	switch {
+	case waMsg.ImageMessage != nil:
+		mediaData, err = s.downloadImageMessage(client, waMsg.ImageMessage)
+	case waMsg.VideoMessage != nil:
+		mediaData, err = s.downloadVideoMessage(client, waMsg.VideoMessage)
+	case waMsg.AudioMessage != nil:
+		mediaData, err = s.downloadAudioMessage(client, waMsg.AudioMessage)
+	case waMsg.DocumentMessage != nil:
+		mediaData, err = s.downloadDocumentMessage(client, waMsg.DocumentMessage)
+	case waMsg.StickerMessage != nil:
+		mediaData, err = s.downloadStickerMessage(client, waMsg.StickerMessage)
+	default:
+		return nil, fmt.Errorf("unsupported media message type")
+	}
+
+	return mediaData, err
+}
+
+func (s *PersistenceService) downloadImageMessage(client *whatsmeow.Client, img *waE2E.ImageMessage) (*MediaData, error) {
+	data, err := client.Download(context.Background(), img)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download image: %w", err)
+	}
+
+	fileName := "image"
+	if img.Caption != nil && *img.Caption != "" {
+		fileName = *img.Caption
+	}
+	if !strings.Contains(fileName, ".") {
+		fileName += ".jpg"
+	}
+
+	mimeType := "image/jpeg"
+	if img.Mimetype != nil {
+		mimeType = *img.Mimetype
+	}
+
+	return &MediaData{
+		Data:     data,
+		MimeType: mimeType,
+		FileName: fileName,
+	}, nil
+}
+
+func (s *PersistenceService) downloadVideoMessage(client *whatsmeow.Client, video *waE2E.VideoMessage) (*MediaData, error) {
+	data, err := client.Download(context.Background(), video)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download video: %w", err)
+	}
+
+	fileName := "video"
+	if video.Caption != nil && *video.Caption != "" {
+		fileName = *video.Caption
+	}
+	if !strings.Contains(fileName, ".") {
+		fileName += ".mp4"
+	}
+
+	mimeType := "video/mp4"
+	if video.Mimetype != nil {
+		mimeType = *video.Mimetype
+	}
+
+	return &MediaData{
+		Data:     data,
+		MimeType: mimeType,
+		FileName: fileName,
+	}, nil
+}
+
+func (s *PersistenceService) downloadAudioMessage(client *whatsmeow.Client, audio *waE2E.AudioMessage) (*MediaData, error) {
+	data, err := client.Download(context.Background(), audio)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download audio: %w", err)
+	}
+
+	fileName := "audio"
+	if !strings.Contains(fileName, ".") {
+		fileName += ".ogg"
+	}
+
+	mimeType := "audio/ogg"
+	if audio.Mimetype != nil {
+		mimeType = *audio.Mimetype
+	}
+
+	return &MediaData{
+		Data:     data,
+		MimeType: mimeType,
+		FileName: fileName,
+	}, nil
+}
+
+func (s *PersistenceService) downloadDocumentMessage(client *whatsmeow.Client, doc *waE2E.DocumentMessage) (*MediaData, error) {
+	data, err := client.Download(context.Background(), doc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download document: %w", err)
+	}
+
+	fileName := "document"
+	if doc.FileName != nil {
+		fileName = *doc.FileName
+	}
+
+	mimeType := "application/octet-stream"
+	if doc.Mimetype != nil {
+		mimeType = *doc.Mimetype
+	}
+
+	return &MediaData{
+		Data:     data,
+		MimeType: mimeType,
+		FileName: fileName,
+	}, nil
+}
+
+func (s *PersistenceService) downloadStickerMessage(client *whatsmeow.Client, sticker *waE2E.StickerMessage) (*MediaData, error) {
+	data, err := client.Download(context.Background(), sticker)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download sticker: %w", err)
+	}
+
+	fileName := "sticker.webp"
+	mimeType := "image/webp"
+	if sticker.Mimetype != nil {
+		mimeType = *sticker.Mimetype
+	}
+
+	return &MediaData{
+		Data:     data,
+		MimeType: mimeType,
+		FileName: fileName,
+	}, nil
 }

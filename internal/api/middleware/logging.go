@@ -7,11 +7,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-
 type LoggingMiddleware struct {
 	logger zerolog.Logger
 }
-
 
 func NewLoggingMiddleware() *LoggingMiddleware {
 	return &LoggingMiddleware{
@@ -19,17 +17,13 @@ func NewLoggingMiddleware() *LoggingMiddleware {
 	}
 }
 
-
 func (m *LoggingMiddleware) Logger() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
-
 		err := c.Next()
 
-
 		duration := time.Since(start)
-
 
 		method := c.Method()
 		path := c.Path()
@@ -37,12 +31,10 @@ func (m *LoggingMiddleware) Logger() fiber.Handler {
 		ip := c.IP()
 		userAgent := c.Get("User-Agent")
 
-
 		sessionID := ""
 		if authCtx := GetAuthContext(c); authCtx != nil {
 			sessionID = authCtx.SessionID
 		}
-
 
 		logEvent := m.logger.Info()
 		if status >= 400 && status < 500 {
@@ -50,7 +42,6 @@ func (m *LoggingMiddleware) Logger() fiber.Handler {
 		} else if status >= 500 {
 			logEvent = m.logger.Error()
 		}
-
 
 		logEvent.
 			Str("method", method).
@@ -66,44 +57,39 @@ func (m *LoggingMiddleware) Logger() fiber.Handler {
 	}
 }
 
-
 func (m *LoggingMiddleware) RequestID() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 
 		requestID := generateRequestID()
-		
 
 		c.Locals("request_id", requestID)
-		
 
 		c.Set("X-Request-ID", requestID)
-		
+
 		return c.Next()
 	}
 }
-
 
 func (m *LoggingMiddleware) LogWithRequestID(c *fiber.Ctx) zerolog.Logger {
 	requestID := ""
 	if id := c.Locals("request_id"); id != nil {
 		requestID = id.(string)
 	}
-	
+
 	sessionID := ""
 	if authCtx := GetAuthContext(c); authCtx != nil {
 		sessionID = authCtx.SessionID
 	}
-	
+
 	return m.logger.With().
 		Str("request_id", requestID).
 		Str("session_id", sessionID).
 		Logger()
 }
 
-
 func generateRequestID() string {
-	return time.Now().Format("20060102150405") + "-" + 
-		   string(rune(time.Now().UnixNano()%26+65)) + 
-		   string(rune(time.Now().UnixNano()%26+65)) + 
-		   string(rune(time.Now().UnixNano()%26+65))
+	return time.Now().Format("20060102150405") + "-" +
+		string(rune(time.Now().UnixNano()%26+65)) +
+		string(rune(time.Now().UnixNano()%26+65)) +
+		string(rune(time.Now().UnixNano()%26+65))
 }

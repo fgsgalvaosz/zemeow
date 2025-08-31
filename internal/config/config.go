@@ -11,7 +11,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-
 type Config struct {
 	Database DatabaseConfig
 	Server   ServerConfig
@@ -19,8 +18,8 @@ type Config struct {
 	WhatsApp WhatsAppConfig
 	Logging  LoggingConfig
 	Webhook  WebhookConfig
+	MinIO    MinIOConfig
 }
-
 
 type DatabaseConfig struct {
 	Host            string
@@ -36,7 +35,6 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime time.Duration
 }
 
-
 type ServerConfig struct {
 	Host         string
 	Port         int
@@ -46,11 +44,9 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration
 }
 
-
 type AuthConfig struct {
 	AdminAPIKey string
 }
-
 
 type WhatsAppConfig struct {
 	Timeout           time.Duration
@@ -58,12 +54,10 @@ type WhatsAppConfig struct {
 	QRCodeTimeout     time.Duration
 }
 
-
 type LoggingConfig struct {
 	Level  string
 	Pretty bool
 }
-
 
 type WebhookConfig struct {
 	Timeout       time.Duration
@@ -71,6 +65,15 @@ type WebhookConfig struct {
 	RetryInterval time.Duration
 }
 
+type MinIOConfig struct {
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	UseSSL          bool
+	Region          string
+	PublicURL       string
+}
 
 func Load() (*Config, error) {
 
@@ -118,8 +121,16 @@ func Load() (*Config, error) {
 			RetryCount:    getEnvAsInt("WEBHOOK_RETRY_COUNT", 3),
 			RetryInterval: getEnvAsDuration("WEBHOOK_RETRY_INTERVAL", 5*time.Second),
 		},
+		MinIO: MinIOConfig{
+			Endpoint:        getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKeyID:     getEnv("MINIO_ACCESS_KEY", "Gacont"),
+			SecretAccessKey: getEnv("MINIO_SECRET_KEY", "WIPcLhjcBoslmOd"),
+			BucketName:      getEnv("MINIO_BUCKET_NAME", "zemeow-media"),
+			UseSSL:          getEnvAsBool("MINIO_USE_SSL", false),
+			Region:          getEnv("MINIO_REGION", "us-east-1"),
+			PublicURL:       getEnv("MINIO_PUBLIC_URL", ""),
+		},
 	}
-
 
 	if config.Database.URL == "" {
 		config.Database.URL = fmt.Sprintf(
@@ -135,7 +146,6 @@ func Load() (*Config, error) {
 
 	return config, nil
 }
-
 
 func (c *Config) Validate() error {
 	if c.Database.Host == "" {
@@ -153,21 +163,17 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-
 func (c *Config) IsDevelopment() bool {
 	return c.Server.Environment == "development"
 }
-
 
 func (c *Config) IsProduction() bool {
 	return c.Server.Environment == "production"
 }
 
-
 func (c *Config) GetServerAddress() string {
 	return net.JoinHostPort(c.Server.Host, fmt.Sprintf("%d", c.Server.Port))
 }
-
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

@@ -1,9 +1,65 @@
 version: '3.8'
 
+# Docker Compose para Produção
+# Contém todos os serviços incluindo a aplicação ZeMeow
+# Use: make prod ou docker-compose up -d
+
 services:
+  # ZeMeow API - Aplicação principal
+  zemeow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zemeow_api
+    restart: unless-stopped
+    environment:
+      # Database - usando nomes corretos que o código espera
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
+      - POSTGRES_USER=${POSTGRES_USER:-zemeow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zemeow123}
+      - POSTGRES_SSLMODE=disable
+
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+
+      # MinIO
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-Gacont}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET_NAME=zemeow-media
+
+      # API
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-test123}
+      - SERVER_PORT=8080
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - ./sessions:/app/sessions
+      - ./logs:/app/logs
+    networks:
+      - zemeow_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL - Banco de dados principal
   postgres:
     image: postgres:15-alpine
-    container_name: zemeow_postgres
+    container_name: zemeow_postgres_prod
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-zemeow}
@@ -19,10 +75,10 @@ services:
       - zemeow_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zemeow} -d ${POSTGRES_DB:-zemeow}"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 5
-      start_period: 30s
+      start_period: 10s
 
   # Opcional: DbGate para administração do banco
   dbgate:
@@ -44,31 +100,65 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    profiles:
-      - admin
 
-  # Webhook Tester para testar webhooks do ZeMeow
-  webhook-tester:
-    image: tarampampam/webhook-tester:latest
-    container_name: zemeow_webhook_tester
+
+  # Redis - Cache e sessões
+  redis:
+    image: redis:7-alpine
+    container_name: zemeow_redis_prod
     restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
     environment:
-      - LISTEN_ADDR=0.0.0.0
-      - LISTEN_PORT=8080
-      - MAX_REQUESTS_PER_SESSION=1000
-      - SESSION_TTL=24h
-      - STORAGE_DRIVER=memory
-      - CREATE_SESSION=true
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
     ports:
-      - "${WEBHOOK_TESTER_PORT:-8090}:8080"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - zemeow_network
-    profiles:
-      - webhook-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # MinIO para armazenamento de mídias do WhatsApp
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1
+    container_name: zemeow_minio_prod
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-Gacont}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL:-http://127.0.0.1:9001}
+      - MINIO_SERVER_URL=${MINIO_SERVER_URL:-http://127.0.0.1:9000}
+      - MINIO_BROWSER=on
+      - MINIO_DOMAIN=127.0.0.1
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - zemeow_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:
     driver: local
+    name: zemeow_postgres_prod_data
+  minio_data:
+    driver: local
+    name: zemeow_minio_prod_data
+  redis_data:
+    driver: local
+    name: zemeow_redis_prod_data
 
 networks:
   zemeow_network:

@@ -9,34 +9,29 @@ import (
 	"github.com/rs/zerolog"
 )
 
-
 type CacheEntry struct {
-	Session   *models.Session
+	Session *models.Session
 
 	Status    models.SessionStatus
 	LastSeen  time.Time
 	ExpiresAt time.Time
 }
 
-
 type SessionCache struct {
 	mu      sync.RWMutex
-	entries map[string]*CacheEntry // sessionID -> CacheEntry
+	entries map[string]*CacheEntry
 
-	logger  zerolog.Logger
-
+	logger zerolog.Logger
 
 	defaultTTL      time.Duration
 	cleanupInterval time.Duration
 
-
 	stopCleanup chan struct{}
 }
 
-
 func NewSessionCache(defaultTTL, cleanupInterval time.Duration) *SessionCache {
 	cache := &SessionCache{
-		entries:         make(map[string]*CacheEntry),
+		entries: make(map[string]*CacheEntry),
 
 		logger:          logger.Get().With().Str("component", "session_cache").Logger(),
 		defaultTTL:      defaultTTL,
@@ -44,12 +39,10 @@ func NewSessionCache(defaultTTL, cleanupInterval time.Duration) *SessionCache {
 		stopCleanup:     make(chan struct{}),
 	}
 
-
 	go cache.startCleanup()
 
 	return cache
 }
-
 
 func (c *SessionCache) Set(sessionID string, session *models.Session, ttl ...time.Duration) {
 	c.mu.Lock()
@@ -61,25 +54,17 @@ func (c *SessionCache) Set(sessionID string, session *models.Session, ttl ...tim
 	}
 
 	entry := &CacheEntry{
-		Session:   session,
+		Session: session,
 
 		Status:    session.Status,
 		LastSeen:  time.Now(),
 		ExpiresAt: time.Now().Add(expiration),
 	}
 
-
-
-
-
-
-
 	c.entries[sessionID] = entry
-
 
 	c.logger.Debug().Str("session_id", sessionID).Msg("Session cached")
 }
-
 
 func (c *SessionCache) Get(sessionID string) (*models.Session, bool) {
 	c.mu.RLock()
@@ -90,34 +75,15 @@ func (c *SessionCache) Get(sessionID string) (*models.Session, bool) {
 		return nil, false
 	}
 
-
 	if time.Now().After(entry.ExpiresAt) {
 		c.logger.Debug().Str("session_id", sessionID).Msg("Cache entry expired")
 		return nil, false
 	}
 
-
 	entry.LastSeen = time.Now()
 
 	return entry.Session, true
 }
-
-
-
-/*
-func (c *SessionCache) GetByToken(token string) (*models.Session, bool) {
-	c.mu.RLock()
-	sessionID, exists := c.tokens[token]
-	c.mu.RUnlock()
-
-	if !exists {
-		return nil, false
-	}
-
-	return c.Get(sessionID)
-}
-*/
-
 
 func (c *SessionCache) UpdateStatus(sessionID string, status models.SessionStatus) {
 	c.mu.Lock()
@@ -135,7 +101,6 @@ func (c *SessionCache) UpdateStatus(sessionID string, status models.SessionStatu
 	c.logger.Debug().Str("session_id", sessionID).Str("status", string(status)).Msg("Session status updated in cache")
 }
 
-
 func (c *SessionCache) Delete(sessionID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -145,12 +110,10 @@ func (c *SessionCache) Delete(sessionID string) {
 		return
 	}
 
-
 	delete(c.entries, sessionID)
 
 	c.logger.Debug().Str("session_id", sessionID).Msg("Session removed from cache")
 }
-
 
 func (c *SessionCache) Exists(sessionID string) bool {
 	c.mu.RLock()
@@ -161,10 +124,8 @@ func (c *SessionCache) Exists(sessionID string) bool {
 		return false
 	}
 
-
 	return !time.Now().After(entry.ExpiresAt)
 }
-
 
 func (c *SessionCache) List() []*models.Session {
 	c.mu.RLock()
@@ -185,14 +146,12 @@ func (c *SessionCache) List() []*models.Session {
 	return sessions
 }
 
-
 func (c *SessionCache) GetStats() CacheStats {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	stats := CacheStats{
 		TotalEntries: len(c.entries),
-
 	}
 
 	now := time.Now()
@@ -218,7 +177,6 @@ func (c *SessionCache) GetStats() CacheStats {
 	return stats
 }
 
-
 func (c *SessionCache) Refresh(sessionID string, ttl ...time.Duration) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -240,17 +198,14 @@ func (c *SessionCache) Refresh(sessionID string, ttl ...time.Duration) bool {
 	return true
 }
 
-
 func (c *SessionCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.entries = make(map[string]*CacheEntry)
 
-
 	c.logger.Info().Msg("Session cache cleared")
 }
-
 
 func (c *SessionCache) startCleanup() {
 	ticker := time.NewTicker(c.cleanupInterval)
@@ -269,7 +224,6 @@ func (c *SessionCache) startCleanup() {
 	}
 }
 
-
 func (c *SessionCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -277,13 +231,11 @@ func (c *SessionCache) cleanup() {
 	now := time.Now()
 	expired := make([]string, 0)
 
-
 	for sessionID, entry := range c.entries {
 		if now.After(entry.ExpiresAt) {
 			expired = append(expired, sessionID)
 		}
 	}
-
 
 	for _, sessionID := range expired {
 		delete(c.entries, sessionID)
@@ -294,16 +246,14 @@ func (c *SessionCache) cleanup() {
 	}
 }
 
-
 func (c *SessionCache) Stop() {
 	close(c.stopCleanup)
 }
 
-
 type CacheStats struct {
-	TotalEntries         int `json:"total_entries"`
-	ActiveEntries        int `json:"active_entries"`
-	ExpiredEntries       int `json:"expired_entries"`
+	TotalEntries   int `json:"total_entries"`
+	ActiveEntries  int `json:"active_entries"`
+	ExpiredEntries int `json:"expired_entries"`
 
 	ConnectedSessions    int `json:"connected_sessions"`
 	DisconnectedSessions int `json:"disconnected_sessions"`

@@ -14,14 +14,12 @@ import (
 	"github.com/felipe/zemeow/internal/service/webhook"
 )
 
-// WebhookHandler gerencia operações relacionadas a webhooks
 type WebhookHandler struct {
 	logger         logger.Logger
 	webhookService *webhook.WebhookService
 	sessionRepo    repositories.SessionRepository
 }
 
-// NewWebhookHandler cria uma nova instância do WebhookHandler
 func NewWebhookHandler(webhookService *webhook.WebhookService, sessionRepo repositories.SessionRepository) *WebhookHandler {
 	return &WebhookHandler{
 		logger:         logger.GetWithSession("webhook_handler"),
@@ -30,7 +28,6 @@ func NewWebhookHandler(webhookService *webhook.WebhookService, sessionRepo repos
 	}
 }
 
-// FindWebhook busca webhooks configurados para uma sessão
 // @Summary Buscar webhooks configurados
 // @Description Retorna lista de webhooks configurados para uma sessão específica
 // @Tags webhooks
@@ -43,13 +40,11 @@ func NewWebhookHandler(webhookService *webhook.WebhookService, sessionRepo repos
 // @Router /webhooks/sessions/{sessionId}/find [get]
 func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
-	// Verificar acesso à sessão
+
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
-	// Buscar a sessão no banco de dados
 	session, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
@@ -57,7 +52,6 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 
 	webhooks := []map[string]interface{}{}
 
-	// Se há webhook configurado, adicionar à lista
 	if session.WebhookURL != nil && *session.WebhookURL != "" {
 		webhooks = append(webhooks, map[string]interface{}{
 			"id":         1,
@@ -77,7 +71,6 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	})
 }
 
-// SetWebhook configura um webhook para uma sessão
 // @Summary Configurar webhook
 // @Description Configura um novo webhook para uma sessão específica
 // @Tags webhooks
@@ -93,18 +86,16 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	// Verificar acesso à sessão
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	var req dto.WebhookConfigRequest
-	
+
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
-	
-	// Validar eventos
+
 	validEvents := h.getValidEvents()
 	for _, event := range req.Events {
 		if !h.isValidEvent(event, validEvents) {
@@ -112,13 +103,11 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 		}
 	}
 
-	// Buscar a sessão no banco de dados
 	session, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
 	}
 
-	// Atualizar configuração do webhook
 	if req.Active {
 		session.WebhookURL = &req.URL
 		session.WebhookEvents = pq.StringArray(req.Events)
@@ -127,7 +116,6 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 		session.WebhookEvents = nil
 	}
 
-	// Salvar no banco de dados
 	if err := h.sessionRepo.Update(session); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update webhook configuration")
 		return h.sendError(c, "Failed to save webhook configuration", "WEBHOOK_SAVE_FAILED", fiber.StatusInternalServerError)
@@ -139,13 +127,13 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 		Strs("events", req.Events).
 		Bool("active", req.Active).
 		Msg("Webhook configured successfully")
-	
+
 	return c.JSON(fiber.Map{
 		"status":     "configured",
 		"message":    "Webhook configured successfully",
 		"session_id": sessionID,
 		"webhook": map[string]interface{}{
-			"id":         time.Now().Unix(), // ID temporário
+			"id":         time.Now().Unix(),
 			"url":        req.URL,
 			"events":     req.Events,
 			"active":     req.Active,
@@ -155,7 +143,6 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	})
 }
 
-// GetWebhookEvents retorna lista completa de eventos disponíveis
 // @Summary Listar eventos de webhook
 // @Description Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria
 // @Tags webhooks
@@ -166,7 +153,7 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 // @Router /webhooks/events [get]
 func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
 	events := h.getValidEvents()
-	
+
 	return c.JSON(fiber.Map{
 		"events": events,
 		"total":  len(events),
@@ -183,43 +170,35 @@ func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
 	})
 }
 
-// getValidEvents retorna lista de todos os eventos válidos
 func (h *WebhookHandler) getValidEvents() []map[string]interface{} {
 	return []map[string]interface{}{
-		// Connection events
+
 		{"name": "connected", "category": "connection", "description": "WhatsApp connection established"},
 		{"name": "disconnected", "category": "connection", "description": "WhatsApp connection lost"},
 		{"name": "connect_failure", "category": "connection", "description": "Failed to connect to WhatsApp"},
 		{"name": "reconnect", "category": "connection", "description": "Reconnection attempt"},
-		
-		// Message events
+
 		{"name": "message", "category": "messages", "description": "New message received"},
 		{"name": "receipt", "category": "messages", "description": "Message delivery receipt"},
 		{"name": "undecryptable_message", "category": "messages", "description": "Message could not be decrypted"},
-		
-		// Presence events
+
 		{"name": "presence", "category": "presence", "description": "User presence status change"},
 		{"name": "chat_presence", "category": "presence", "description": "Chat typing status"},
-		
-		// Group events
+
 		{"name": "group_info", "category": "groups", "description": "Group information updated"},
 		{"name": "joined_group", "category": "groups", "description": "Joined a new group"},
-		
-		// Call events
+
 		{"name": "call_offer", "category": "calls", "description": "Incoming call offer"},
 		{"name": "call_accept", "category": "calls", "description": "Call accepted"},
 		{"name": "call_terminate", "category": "calls", "description": "Call terminated"},
-		
-		// Media events
+
 		{"name": "picture", "category": "media", "description": "Profile picture updated"},
-		
-		// System events
+
 		{"name": "app_state", "category": "system", "description": "App state synchronization"},
 		{"name": "history_sync", "category": "system", "description": "Message history synchronization"},
 	}
 }
 
-// isValidEvent verifica se um evento é válido
 func (h *WebhookHandler) isValidEvent(event string, validEvents []map[string]interface{}) bool {
 	for _, validEvent := range validEvents {
 		if validEvent["name"].(string) == event {
@@ -235,12 +214,10 @@ func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 		return false
 	}
 
-	// Acesso global sempre permitido
 	if authCtx.IsGlobalKey {
 		return true
 	}
 
-	// Verificar se o usuário tem acesso à sessão específica
 	return authCtx.SessionID == sessionID
 }
 

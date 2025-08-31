@@ -10,14 +10,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-
 type LifecycleEvent struct {
 	SessionID string
 	Event     LifecycleEventType
 	Data      interface{}
 	Timestamp time.Time
 }
-
 
 type LifecycleEventType string
 
@@ -31,7 +29,6 @@ const (
 	EventSessionCleanup      LifecycleEventType = "session_cleanup"
 )
 
-
 type LifecycleManager struct {
 	mu            sync.RWMutex
 	eventChan     chan LifecycleEvent
@@ -43,9 +40,7 @@ type LifecycleManager struct {
 	cancel        context.CancelFunc
 }
 
-
 type LifecycleHandler func(event LifecycleEvent) error
-
 
 type SessionState struct {
 	SessionID    string
@@ -55,7 +50,6 @@ type SessionState struct {
 	ErrorCount   int
 	Metadata     map[string]interface{}
 }
-
 
 func NewLifecycleManager() *LifecycleManager {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,20 +65,16 @@ func NewLifecycleManager() *LifecycleManager {
 	}
 }
 
-
 func (lm *LifecycleManager) Start() error {
 	lm.logger.Info().Msg("Starting lifecycle manager")
 
-
 	go lm.processEvents()
-
 
 	go lm.periodicCleanup()
 
 	lm.logger.Info().Msg("Lifecycle manager started")
 	return nil
 }
-
 
 func (lm *LifecycleManager) Stop() {
 	lm.logger.Info().Msg("Stopping lifecycle manager")
@@ -95,7 +85,6 @@ func (lm *LifecycleManager) Stop() {
 
 	lm.logger.Info().Msg("Lifecycle manager stopped")
 }
-
 
 func (lm *LifecycleManager) EmitEvent(sessionID string, eventType LifecycleEventType, data interface{}) {
 	event := LifecycleEvent{
@@ -113,7 +102,6 @@ func (lm *LifecycleManager) EmitEvent(sessionID string, eventType LifecycleEvent
 	}
 }
 
-
 func (lm *LifecycleManager) RegisterHandler(eventType LifecycleEventType, handler LifecycleHandler) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -126,7 +114,6 @@ func (lm *LifecycleManager) RegisterHandler(eventType LifecycleEventType, handle
 	lm.logger.Debug().Str("event_type", string(eventType)).Msg("Handler registered")
 }
 
-
 func (lm *LifecycleManager) GetSessionState(sessionID string) (*SessionState, bool) {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
@@ -134,7 +121,6 @@ func (lm *LifecycleManager) GetSessionState(sessionID string) (*SessionState, bo
 	state, exists := lm.sessionStates[sessionID]
 	return state, exists
 }
-
 
 func (lm *LifecycleManager) UpdateSessionState(sessionID string, status models.SessionStatus) {
 	lm.mu.Lock()
@@ -156,7 +142,6 @@ func (lm *LifecycleManager) UpdateSessionState(sessionID string, status models.S
 	lm.logger.Debug().Str("session_id", sessionID).Str("status", string(status)).Msg("Session state updated")
 }
 
-
 func (lm *LifecycleManager) RemoveSessionState(sessionID string) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -164,7 +149,6 @@ func (lm *LifecycleManager) RemoveSessionState(sessionID string) {
 	delete(lm.sessionStates, sessionID)
 	lm.logger.Debug().Str("session_id", sessionID).Msg("Session state removed")
 }
-
 
 func (lm *LifecycleManager) processEvents() {
 	lm.logger.Info().Msg("Starting event processor")
@@ -186,16 +170,13 @@ func (lm *LifecycleManager) processEvents() {
 	}
 }
 
-
 func (lm *LifecycleManager) handleEvent(event LifecycleEvent) {
 	lm.logger.Debug().
 		Str("session_id", event.SessionID).
 		Str("event", string(event.Event)).
 		Msg("Processing lifecycle event")
 
-
 	lm.updateStateFromEvent(event)
-
 
 	lm.mu.RLock()
 	handlers := lm.handlers[event.Event]
@@ -211,7 +192,6 @@ func (lm *LifecycleManager) handleEvent(event LifecycleEvent) {
 		}
 	}
 }
-
 
 func (lm *LifecycleManager) updateStateFromEvent(event LifecycleEvent) {
 	switch event.Event {
@@ -236,7 +216,6 @@ func (lm *LifecycleManager) updateStateFromEvent(event LifecycleEvent) {
 	}
 }
 
-
 func (lm *LifecycleManager) incrementErrorCount(sessionID string) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
@@ -245,7 +224,6 @@ func (lm *LifecycleManager) incrementErrorCount(sessionID string) {
 		state.ErrorCount++
 	}
 }
-
 
 func (lm *LifecycleManager) periodicCleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
@@ -265,13 +243,12 @@ func (lm *LifecycleManager) periodicCleanup() {
 	}
 }
 
-
 func (lm *LifecycleManager) cleanup() {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
 	now := time.Now()
-	threshold := 1 * time.Hour // Remover estados inativos há mais de 1 hora
+	threshold := 1 * time.Hour
 
 	toRemove := make([]string, 0)
 
@@ -290,7 +267,6 @@ func (lm *LifecycleManager) cleanup() {
 		lm.logger.Info().Int("cleaned_count", len(toRemove)).Msg("Periodic cleanup completed")
 	}
 }
-
 
 func (lm *LifecycleManager) GetStats() LifecycleStats {
 	lm.mu.RLock()
@@ -319,7 +295,6 @@ func (lm *LifecycleManager) GetStats() LifecycleStats {
 
 	return stats
 }
-
 
 type LifecycleStats struct {
 	TotalSessions        int `json:"total_sessions"`

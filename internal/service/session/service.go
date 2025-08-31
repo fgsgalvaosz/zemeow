@@ -36,7 +36,7 @@ type Service interface {
 
 type SessionService struct {
 	repository repositories.SessionRepository
-	manager    interface{} // WhatsAppManager interface
+	manager    interface{}
 	logger     logger.Logger
 }
 
@@ -104,7 +104,6 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-
 	if manager, ok := s.manager.(interface {
 		InitializeNewSession(*models.Session) error
 	}); ok {
@@ -168,7 +167,7 @@ func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, erro
 
 	filter := &models.SessionFilter{
 		Page:    1,
-		PerPage: 100, // Limite padrão
+		PerPage: 100,
 	}
 
 	response, err := s.repository.GetAll(filter)
@@ -187,7 +186,7 @@ func (s *SessionService) ListSessions(ctx context.Context) ([]*SessionInfo, erro
 		}
 
 		sessions[i] = &SessionInfo{
-			ID:          session.GetSessionID(), // UUID como ID principal
+			ID:          session.GetSessionID(),
 			Name:        session.Name,
 			APIKey:      session.APIKey,
 			Status:      Status(session.Status),

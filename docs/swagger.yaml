@@ -1339,6 +1339,166 @@ paths:
       summary: Fazer logout da sessão
       tags:
       - sessions
+  /sessions/{sessionId}/media:
+    delete:
+      consumes:
+      - application/json
+      description: Remove uma mídia do MinIO e atualiza a mensagem
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Path da mídia no MinIO
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Mídia removida com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Parâmetros inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Mídia não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Deletar mídia
+      tags:
+      - media
+    get:
+      consumes:
+      - application/json
+      description: Obtém uma mídia armazenada no MinIO pelo path
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Path da mídia no MinIO
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Informações da mídia
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Parâmetros inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Mídia não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Obter mídia
+      tags:
+      - media
+  /sessions/{sessionId}/media/download:
+    get:
+      consumes:
+      - application/json
+      description: Baixa uma mídia armazenada no MinIO
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Path da mídia no MinIO
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Arquivo da mídia
+          schema:
+            type: file
+        "400":
+          description: Parâmetros inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Mídia não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Baixar mídia
+      tags:
+      - media
+  /sessions/{sessionId}/media/list:
+    get:
+      consumes:
+      - application/json
+      description: Lista todas as mídias de uma sessão com paginação
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Limite por página (padrão: 50, máximo: 100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Filtrar por tipo de mídia (image, video, audio, document)
+        in: query
+        name: type
+        type: string
+      - description: Filtrar por direção (incoming, outgoing)
+        in: query
+        name: direction
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de mídias
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Parâmetros inválidos
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Listar mídias da sessão
+      tags:
+      - media
   /sessions/{sessionId}/messages:
     get:
       consumes:

@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,18 +14,19 @@ import (
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/media"
 	"github.com/felipe/zemeow/internal/service/session"
 	"github.com/felipe/zemeow/internal/service/webhook"
+
+	"github.com/felipe/zemeow/docs"
 )
 
-
 type Server struct {
-	app            *fiber.App
-	config         *config.Config
-	logger         logger.Logger
-	router         *routes.Router
+	app    *fiber.App
+	config *config.Config
+	logger logger.Logger
+	router *routes.Router
 }
-
 
 func NewServer(
 	cfg *config.Config,
@@ -32,6 +34,7 @@ func NewServer(
 	sessionService interface{},
 	authService interface{},
 	webhookService *webhook.WebhookService,
+	messageRepo repositories.MessageRepository,
 ) *Server {
 
 	app := fiber.New(fiber.Config{
@@ -55,15 +58,29 @@ func NewServer(
 		},
 	})
 
+	configureSwagger(cfg)
+
+	var mediaService *media.MediaService
+	if cfg.MinIO.Endpoint != "" {
+		var err error
+		mediaService, err = media.NewMediaService(&cfg.MinIO)
+		if err != nil {
+			logger.Get().Warn().Err(err).Msg("Failed to initialize MediaService, media routes will be disabled")
+			mediaService = nil
+		}
+	}
 
 	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service), sessionRepo)
-	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service))
+	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service), mediaService)
 	webhookHandler := handlers.NewWebhookHandler(webhookService, sessionRepo)
 	groupHandler := handlers.NewGroupHandler(sessionService.(session.Service))
 
+	var mediaHandler *handlers.MediaHandler
+	if mediaService != nil {
+		mediaHandler = handlers.NewMediaHandler(mediaService, messageRepo)
+	}
 
 	authMiddleware := middleware.NewAuthMiddleware(cfg.Auth.AdminAPIKey, sessionRepo)
-
 
 	routerConfig := &routes.RouterConfig{
 		AuthMiddleware: authMiddleware,
@@ -71,6 +88,7 @@ func NewServer(
 		MessageHandler: messageHandler,
 		WebhookHandler: webhookHandler,
 		GroupHandler:   groupHandler,
+		MediaHandler:   mediaHandler,
 	}
 	router := routes.NewRouter(app, routerConfig)
 
@@ -82,43 +100,63 @@ func NewServer(
 	}
 }
 
-
 func (s *Server) SetupRoutes() {
 
 	s.app.Use(recover.New())
-
 
 	s.router.SetupRoutes()
 
 	s.logger.Info().Msg("API routes configured successfully")
 }
 
-
 func (s *Server) Start() error {
 
 	s.SetupRoutes()
 
-
 	port := s.config.Server.Port
 	if port == 0 {
-		port = 8080 // porta padrão
+		port = 8080
 	}
 
 	address := fmt.Sprintf(":%d", port)
 
 	s.logger.Info().Int("port", port).Msg("Starting HTTP server")
 
-
 	return s.app.Listen(address)
 }
-
 
 func (s *Server) Stop() error {
 	s.logger.Info().Msg("Stopping HTTP server")
 	return s.app.Shutdown()
 }
 
-
 func (s *Server) GetApp() *fiber.App {
 	return s.app
+}
+
+func configureSwagger(cfg *config.Config) {
+
+	host := cfg.Server.Host
+	if host == "0.0.0.0" || host == "" {
+
+		host = "localhost"
+	}
+
+	scheme := "http"
+	if cfg.IsProduction() || strings.Contains(host, ".com") || strings.Contains(host, ".br") {
+		scheme = "https"
+	}
+
+	swaggerHost := host
+	if !cfg.IsProduction() && host == "localhost" {
+		swaggerHost = fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+	}
+
+	docs.SwaggerInfo.Host = swaggerHost
+	docs.SwaggerInfo.Schemes = []string{scheme}
+
+	logger.Get().Info().
+		Str("swagger_host", swaggerHost).
+		Str("swagger_scheme", scheme).
+		Msg("Swagger configured dynamically")
 }

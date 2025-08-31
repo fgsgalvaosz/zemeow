@@ -11,37 +11,36 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/vincent-petithory/dataurl"
-	"google.golang.org/protobuf/proto"
 	"go.mau.fi/whatsmeow"
 	waE2E "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/felipe/zemeow/internal/api/dto"
 	"github.com/felipe/zemeow/internal/api/middleware"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/media"
 	"github.com/felipe/zemeow/internal/service/session"
 )
 
-
 type MessageHandler struct {
 	sessionService session.Service
+	mediaService   *media.MediaService
 	logger         logger.Logger
 }
 
-
-func NewMessageHandler(sessionService session.Service) *MessageHandler {
+func NewMessageHandler(sessionService session.Service, mediaService *media.MediaService) *MessageHandler {
 	return &MessageHandler{
 		sessionService: sessionService,
+		mediaService:   mediaService,
 		logger:         logger.GetWithSession("message_handler"),
 	}
 }
-
 
 func (h *MessageHandler) SendMessage(c *fiber.Ctx) error {
 
 	return h.SendText(c)
 }
-
 
 // @Summary Enviar mensagem de texto
 // @Description Envia uma mensagem de texto via WhatsApp
@@ -58,41 +57,34 @@ func (h *MessageHandler) SendMessage(c *fiber.Ctx) error {
 // @Router /sessions/{sessionId}/send/text [post]
 func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
-
 
 	var req dto.SendTextRequest
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	if err := h.validateTextRequest(&req); err != nil {
 		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
-
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
-
 
 	msg := &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
@@ -100,17 +92,14 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 		},
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message_id": messageID,
@@ -120,6 +109,43 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	})
 }
 
+func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, contentType string, data []byte, direction, chatJID, senderJID string) (*media.MediaInfo, error) {
+	if h.mediaService == nil {
+		h.logger.Warn().Msg("MediaService not available, skipping media upload")
+		return nil, nil
+	}
+
+	uploadReq := &media.MediaUploadRequest{
+		SessionID:   sessionID,
+		MessageID:   messageID,
+		FileName:    fileName,
+		ContentType: contentType,
+		Data:        data,
+		Direction:   direction,
+		ChatJID:     chatJID,
+		SenderJID:   senderJID,
+	}
+
+	mediaInfo, err := h.mediaService.UploadMedia(context.Background(), uploadReq)
+	if err != nil {
+		h.logger.Error().Err(err).
+			Str("session_id", sessionID).
+			Str("message_id", messageID).
+			Str("file_name", fileName).
+			Msg("Failed to upload media to MinIO")
+		return nil, err
+	}
+
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Str("message_id", messageID).
+		Str("media_id", mediaInfo.ID).
+		Str("minio_path", mediaInfo.Path).
+		Int64("size", mediaInfo.Size).
+		Msg("Media uploaded to MinIO successfully")
+
+	return mediaInfo, nil
+}
 
 // @Summary Enviar mídia
 // @Description Envia arquivos de mídia (imagem, vídeo, áudio, documento) via WhatsApp
@@ -136,35 +162,29 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 // @Router /sessions/{sessionId}/send/media [post]
 func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
-
 
 	var req dto.SendMediaRequest
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	if err := h.validateMediaRequest(&req); err != nil {
 		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
-
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	fileData, err := h.decodeBase64Media(req.Media)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_MEDIA_DATA", fiber.StatusBadRequest)
 	}
-
 
 	var mediaType whatsmeow.MediaType
 	switch req.Type {
@@ -177,46 +197,39 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	case dto.MediaTypeDocument:
 		mediaType = whatsmeow.MediaDocument
 	case dto.MediaTypeSticker:
-		mediaType = whatsmeow.MediaImage // Stickers são tratados como imagens
+		mediaType = whatsmeow.MediaImage
 	default:
 		return h.sendError(c, "Unsupported media type", "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
 	}
-
 
 	uploaded, err := client.Upload(context.Background(), fileData, mediaType)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
 
-
 	msg, err := h.buildMediaMessage(req, fileData, uploaded)
 	if err != nil {
 		return h.sendError(c, err.Error(), "BUILD_MESSAGE_FAILED", fiber.StatusInternalServerError)
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send media: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message_id": messageID,
@@ -227,7 +240,6 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 		"file_size":  len(fileData),
 	})
 }
-
 
 // @Summary Enviar localização
 // @Description Envia uma localização geográfica via WhatsApp
@@ -244,41 +256,34 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 // @Router /sessions/{sessionId}/send/location [post]
 func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
-
 
 	var req dto.SendLocationRequest
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	if err := h.validateLocationRequest(&req); err != nil {
 		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
-
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
-
 
 	msg := &waE2E.Message{
 		LocationMessage: &waE2E.LocationMessage{
@@ -288,17 +293,14 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 		},
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send location: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message_id": messageID,
@@ -307,7 +309,6 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 		"recipient":  req.To,
 	})
 }
-
 
 // @Summary Enviar contato
 // @Description Envia um cartão de contato via WhatsApp
@@ -324,41 +325,34 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 // @Router /sessions/{sessionId}/send/contact [post]
 func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
-
 
 	var req dto.SendContactRequest
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	if err := h.validateContactRequest(&req); err != nil {
 		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
-
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
-
 
 	msg := &waE2E.Message{
 		ContactMessage: &waE2E.ContactMessage{
@@ -367,17 +361,14 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 		},
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send contact: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message_id": messageID,
@@ -386,10 +377,6 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 		"recipient":  req.To,
 	})
 }
-
-
-
-
 
 // @Summary Enviar sticker
 // @Description Envia um sticker/figurinha via WhatsApp
@@ -412,36 +399,30 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
-
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
-
 
 	filedata, err := h.processMediaData(req.Sticker)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to process sticker: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
 	}
 
-
 	uploaded, err := client.Upload(context.Background(), filedata, whatsmeow.MediaImage)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to upload sticker: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	msg := &waE2E.Message{
 		StickerMessage: &waE2E.StickerMessage{
@@ -455,11 +436,9 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 		},
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
@@ -473,8 +452,6 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 		"recipient":  req.To,
 	})
 }
-
-
 
 // @Summary Reagir a mensagem
 // @Description Envia uma reação (emoji) para uma mensagem específica
@@ -497,18 +474,15 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	msg := &waE2E.Message{
 		ReactionMessage: &waE2E.ReactionMessage{
@@ -520,7 +494,6 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 			Text: proto.String(req.Emoji),
 		},
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
@@ -536,8 +509,6 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 	})
 }
 
-
-
 func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -546,18 +517,15 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	msg := &waE2E.Message{
 		ProtocolMessage: &waE2E.ProtocolMessage{
@@ -569,7 +537,6 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 			Type: waE2E.ProtocolMessage_REVOKE.Enum(),
 		},
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
@@ -585,10 +552,6 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 	})
 }
 
-
-
-
-
 func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -597,18 +560,15 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	_, err = h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	var presence types.Presence
 	switch req.Presence {
@@ -629,7 +589,6 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid presence type", "INVALID_PRESENCE", fiber.StatusBadRequest)
 	}
 
-
 	err = client.SendPresence(presence)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send presence: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
@@ -641,8 +600,6 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 		"presence":  req.Presence,
 	})
 }
-
-
 
 // @Summary Marcar como lida
 // @Description Marca uma mensagem como lida no WhatsApp
@@ -664,18 +621,15 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	var messageIDs []types.MessageID
 	for _, msgID := range req.MessageID {
@@ -694,32 +648,21 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	})
 }
 
-
-
-
-
 func (h *MessageHandler) DownloadImage(c *fiber.Ctx) error {
 	return h.downloadMedia(c, "image")
 }
-
-
 
 func (h *MessageHandler) DownloadVideo(c *fiber.Ctx) error {
 	return h.downloadMedia(c, "video")
 }
 
-
-
 func (h *MessageHandler) DownloadAudio(c *fiber.Ctx) error {
 	return h.downloadMedia(c, "audio")
 }
 
-
-
 func (h *MessageHandler) DownloadDocument(c *fiber.Ctx) error {
 	return h.downloadMedia(c, "document")
 }
-
 
 func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 	sessionID := c.Params("sessionId")
@@ -729,25 +672,14 @@ func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	if req.Type != mediaType {
 		return h.sendError(c, fmt.Sprintf("Expected media type %s, got %s", mediaType, req.Type), "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
 	}
-
 
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
-
-
-
-
-
-
-
-
-
 
 	h.logger.Warn().
 		Str("session_id", sessionID).
@@ -764,10 +696,6 @@ func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 		"timestamp":  time.Now().Unix(),
 	})
 }
-
-
-
-
 
 // @Summary Enviar botões interativos
 // @Description Envia uma mensagem com botões interativos via WhatsApp
@@ -789,32 +717,25 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
-
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
 
-
-
-
-	// Criar botões interativos reais
 	var buttons []*waE2E.ButtonsMessage_Button
 	for _, btn := range req.Buttons {
 		button := &waE2E.ButtonsMessage_Button{
-			ButtonID:     proto.String(btn.ID),
+			ButtonID: proto.String(btn.ID),
 			ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
 				DisplayText: proto.String(btn.Text),
 			},
@@ -823,7 +744,6 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 		buttons = append(buttons, button)
 	}
 
-	// Criar mensagem com botões
 	msg := &waE2E.Message{
 		ButtonsMessage: &waE2E.ButtonsMessage{
 			ContentText: proto.String(req.Text),
@@ -832,17 +752,14 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 		},
 	}
 
-	// Adicionar informações de contexto se fornecidas
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
 
-	// Enviar mensagem
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Msg("Failed to send interactive buttons, trying text fallback")
 
-		// Fallback para texto simples se botões interativos falharem
 		buttonText := req.Text + "\n\n"
 		for i, button := range req.Buttons {
 			buttonText += fmt.Sprintf("%d. %s\n", i+1, button.Text)
@@ -882,8 +799,6 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 	})
 }
 
-
-
 // @Summary Enviar lista interativa
 // @Description Envia uma mensagem com lista de opções interativa via WhatsApp
 // @Tags messages
@@ -904,28 +819,21 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
-
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
 
-
-
-
-	// Criar seções da lista interativa
 	var sections []*waE2E.ListMessage_Section
 	for _, section := range req.Sections {
 		var rows []*waE2E.ListMessage_Row
@@ -945,7 +853,6 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 		sections = append(sections, listSection)
 	}
 
-	// Criar mensagem com lista
 	msg := &waE2E.Message{
 		ListMessage: &waE2E.ListMessage{
 			Title:       proto.String(req.Title),
@@ -957,17 +864,14 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 		},
 	}
 
-	// Adicionar informações de contexto se fornecidas
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
 
-	// Enviar mensagem
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Msg("Failed to send interactive list, trying text fallback")
 
-		// Fallback para texto simples se lista interativa falhar
 		listText := req.Text + "\n\n" + req.Title + "\n"
 		for _, section := range req.Sections {
 			listText += "\n" + section.Title + ":\n"
@@ -1014,8 +918,6 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 	})
 }
 
-
-
 func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1024,24 +926,20 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
-
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
-
 
 	var pollOptions []*waE2E.PollCreationMessage_Option
 	for _, option := range req.Options {
@@ -1050,26 +948,21 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 		})
 	}
 
-
 	selectableCount := req.Selectable
 	if selectableCount == 0 {
-		selectableCount = 1 // Padrão: apenas uma opção
+		selectableCount = 1
 	}
-
 
 	msg := &waE2E.Message{
 		PollCreationMessage: &waE2E.PollCreationMessage{
 			Name:    proto.String(req.Name),
 			Options: pollOptions,
-
 		},
 	}
-
 
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
@@ -1091,14 +984,12 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 		"timestamp":  response.Timestamp,
 		"recipient":  req.To,
 		"poll": map[string]interface{}{
-			"name":        req.Name,
-			"options":     req.Options,
-			"selectable":  selectableCount,
+			"name":       req.Name,
+			"options":    req.Options,
+			"selectable": selectableCount,
 		},
 	})
 }
-
-
 
 func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
@@ -1108,18 +999,15 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	msg := &waE2E.Message{
 		EditedMessage: &waE2E.FutureProofMessage{
@@ -1133,13 +1021,12 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 				FromMe:    proto.Bool(true),
 				ID:        proto.String(req.MessageID),
 			},
-			Type:        waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+			Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
 			EditedMessage: &waE2E.Message{
 				Conversation: proto.String(req.Text),
 			},
 		},
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
@@ -1154,18 +1041,14 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 		Msg("Message edited successfully")
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"success":           true,
+		"success":             true,
 		"original_message_id": req.MessageID,
-		"status":            "edited",
-		"timestamp":         response.Timestamp,
-		"recipient":         req.To,
-		"new_text":          req.Text,
+		"status":              "edited",
+		"timestamp":           response.Timestamp,
+		"recipient":           req.To,
+		"new_text":            req.Text,
 	})
 }
-
-
-
-
 
 // @Summary Enviar imagem
 // @Description Envia uma imagem via WhatsApp
@@ -1186,11 +1069,8 @@ func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	return h.SendMedia(c)
 }
-
-
 
 // @Summary Enviar áudio
 // @Description Envia um arquivo de áudio via WhatsApp
@@ -1211,11 +1091,8 @@ func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	return h.SendMedia(c)
 }
-
-
 
 // @Summary Enviar documento
 // @Description Envia um documento/arquivo via WhatsApp
@@ -1236,11 +1113,8 @@ func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	return h.SendMedia(c)
 }
-
-
 
 // @Summary Enviar vídeo
 // @Description Envia um vídeo via WhatsApp
@@ -1261,10 +1135,8 @@ func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
 	return h.SendMedia(c)
 }
-
 
 // @Summary Listar mensagens
 // @Description Retorna o histórico de mensagens da sessão
@@ -1279,12 +1151,10 @@ func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
-	// Obter parâmetros de query
 	phone := c.Query("phone")
 	limit := c.QueryInt("limit", 20)
 	offset := c.QueryInt("offset", 0)
@@ -1292,9 +1162,6 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	if phone == "" {
 		return h.sendError(c, "Phone number is required", "MISSING_PHONE", fiber.StatusBadRequest)
 	}
-
-	// Por enquanto, retornar mensagens vazias até implementar o repositório
-	// TODO: Implementar recuperação real de mensagens do banco de dados
 
 	h.logger.Info().Str("session_id", sessionID).Str("phone", phone).Msg("GetMessages called - returning empty for now")
 
@@ -1311,8 +1178,6 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 		"note": "Message history retrieval will be implemented with database integration",
 	})
 }
-
-
 
 // @Summary Obter status da mensagem
 // @Description Retorna o status de entrega de uma mensagem específica
@@ -1337,8 +1202,6 @@ func (h *MessageHandler) GetMessageStatus(c *fiber.Ctx) error {
 	})
 }
 
-
-
 // @Summary Enviar mensagens em lote
 // @Description Envia múltiplas mensagens de uma vez para diferentes destinatários
 // @Tags messages
@@ -1359,22 +1222,18 @@ func (h *MessageHandler) SendBulkMessages(c *fiber.Ctx) error {
 	})
 }
 
-
 func (h *MessageHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 	authCtx := middleware.GetAuthContext(c)
 	if authCtx == nil {
 		return false
 	}
 
-
 	if authCtx.IsGlobalKey {
 		return true
 	}
 
-
 	return authCtx.SessionID == sessionID
 }
-
 
 func (h *MessageHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
 	return c.Status(status).JSON(fiber.Map{
@@ -1386,9 +1245,6 @@ func (h *MessageHandler) sendError(c *fiber.Ctx, message, code string, status in
 	})
 }
 
-
-
-
 func (h *MessageHandler) parseJID(phone string) (types.JID, error) {
 
 	phone = strings.Map(func(r rune) rune {
@@ -1398,111 +1254,98 @@ func (h *MessageHandler) parseJID(phone string) (types.JID, error) {
 		return -1
 	}, phone)
 
-
 	if len(phone) < 10 || len(phone) > 15 {
 		return types.JID{}, fmt.Errorf("invalid phone number length")
 	}
-
 
 	jid := types.NewJID(phone, types.DefaultUserServer)
 	return jid, nil
 }
 
-
 func (h *MessageHandler) validateTextRequest(req *dto.SendTextRequest) error {
 	if req.To == "" {
 		return fmt.Errorf("recipient 'to' is required")
 	}
-	
+
 	if req.Text == "" {
 		return fmt.Errorf("text content is required")
 	}
-	
+
 	if len(req.Text) > 4096 {
 		return fmt.Errorf("text content exceeds maximum length of 4096 characters")
 	}
-	
+
 	return nil
 }
-
 
 func (h *MessageHandler) validateMediaRequest(req *dto.SendMediaRequest) error {
 	if req.To == "" {
 		return fmt.Errorf("recipient 'to' is required")
 	}
-	
+
 	if req.Media == "" {
 		return fmt.Errorf("media data is required")
 	}
-	
 
 	if !strings.HasPrefix(req.Media, "data:") {
 		return fmt.Errorf("media must be a valid data URL (data:mime/type;base64,...)")
 	}
-	
 
 	if req.Caption != "" && len(req.Caption) > 1024 {
 		return fmt.Errorf("caption exceeds maximum length of 1024 characters")
 	}
-	
 
 	if req.Filename != "" && len(req.Filename) > 255 {
 		return fmt.Errorf("filename exceeds maximum length of 255 characters")
 	}
-	
+
 	return nil
 }
-
 
 func (h *MessageHandler) validateLocationRequest(req *dto.SendLocationRequest) error {
 	if req.To == "" {
 		return fmt.Errorf("recipient 'to' is required")
 	}
-	
 
 	if req.Latitude < -90 || req.Latitude > 90 {
 		return fmt.Errorf("latitude must be between -90 and 90")
 	}
-	
 
 	if req.Longitude < -180 || req.Longitude > 180 {
 		return fmt.Errorf("longitude must be between -180 and 180")
 	}
-	
+
 	return nil
 }
-
 
 func (h *MessageHandler) validateContactRequest(req *dto.SendContactRequest) error {
 	if req.To == "" {
 		return fmt.Errorf("recipient 'to' is required")
 	}
-	
+
 	if req.Name == "" {
 		return fmt.Errorf("contact name is required")
 	}
-	
+
 	if req.Vcard == "" {
 		return fmt.Errorf("vcard data is required")
 	}
-	
+
 	return nil
 }
-
 
 func (h *MessageHandler) decodeBase64Media(dataURL string) ([]byte, error) {
 	if !strings.HasPrefix(dataURL, "data:") {
 		return nil, fmt.Errorf("invalid data URL format")
 	}
-	
+
 	dataURLStruct, err := dataurl.DecodeString(dataURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode base64 data: %v", err)
 	}
-	
+
 	return dataURLStruct.Data, nil
 }
-
 
 func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []byte, uploaded whatsmeow.UploadResponse) (*waE2E.Message, error) {
 	switch req.Type {
@@ -1512,7 +1355,7 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 		if mimeType == "" {
 			mimeType = http.DetectContentType(filedata)
 		}
-		
+
 		return &waE2E.Message{
 			ImageMessage: &waE2E.ImageMessage{
 				Caption:       &req.Caption,
@@ -1525,16 +1368,16 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				FileLength:    proto.Uint64(uint64(len(filedata))),
 			},
 		}, nil
-		
+
 	case dto.MediaTypeAudio:
 
 		mimeType := req.MimeType
 		if mimeType == "" {
 			mimeType = "audio/ogg; codecs=opus"
 		}
-		
-		ptt := true // Áudio como mensagem de voz
-		
+
+		ptt := true
+
 		return &waE2E.Message{
 			AudioMessage: &waE2E.AudioMessage{
 				URL:           proto.String(uploaded.URL),
@@ -1547,14 +1390,14 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				PTT:           &ptt,
 			},
 		}, nil
-		
+
 	case dto.MediaTypeVideo:
 
 		mimeType := req.MimeType
 		if mimeType == "" {
 			mimeType = http.DetectContentType(filedata)
 		}
-		
+
 		return &waE2E.Message{
 			VideoMessage: &waE2E.VideoMessage{
 				Caption:       &req.Caption,
@@ -1567,7 +1410,7 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				FileLength:    proto.Uint64(uint64(len(filedata))),
 			},
 		}, nil
-		
+
 	case dto.MediaTypeDocument:
 
 		mimeType := req.MimeType
@@ -1581,7 +1424,7 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				mimeType = http.DetectContentType(filedata)
 			}
 		}
-		
+
 		return &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
 				FileName:      &req.Filename,
@@ -1595,14 +1438,14 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				FileLength:    proto.Uint64(uint64(len(filedata))),
 			},
 		}, nil
-		
+
 	case dto.MediaTypeSticker:
 
 		mimeType := req.MimeType
 		if mimeType == "" {
 			mimeType = http.DetectContentType(filedata)
 		}
-		
+
 		return &waE2E.Message{
 			StickerMessage: &waE2E.StickerMessage{
 				URL:           proto.String(uploaded.URL),
@@ -1614,18 +1457,16 @@ func (h *MessageHandler) buildMediaMessage(req dto.SendMediaRequest, filedata []
 				FileLength:    proto.Uint64(uint64(len(filedata))),
 			},
 		}, nil
-		
+
 	default:
 		return nil, fmt.Errorf("unsupported media type: %s", req.Type)
 	}
 }
 
-
 func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.ContextInfo) {
 	if contextInfo == nil {
 		return
 	}
-	
 
 	if contextInfo.StanzaID != nil && contextInfo.Participant != nil {
 
@@ -1637,7 +1478,6 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.ExtendedTextMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.ExtendedTextMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
 
 		if msg.ImageMessage != nil {
 			if msg.ImageMessage.ContextInfo == nil {
@@ -1647,7 +1487,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.ImageMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.ImageMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.AudioMessage != nil {
 			if msg.AudioMessage.ContextInfo == nil {
 				msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1656,7 +1496,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.AudioMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.AudioMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.VideoMessage != nil {
 			if msg.VideoMessage.ContextInfo == nil {
 				msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1665,7 +1505,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.VideoMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.DocumentMessage != nil {
 			if msg.DocumentMessage.ContextInfo == nil {
 				msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1674,7 +1514,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.DocumentMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.DocumentMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.StickerMessage != nil {
 			if msg.StickerMessage.ContextInfo == nil {
 				msg.StickerMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1683,7 +1523,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.StickerMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.StickerMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.LocationMessage != nil {
 			if msg.LocationMessage.ContextInfo == nil {
 				msg.LocationMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1692,7 +1532,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.LocationMessage.ContextInfo.Participant = contextInfo.Participant
 			msg.LocationMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
-		
+
 		if msg.ContactMessage != nil {
 			if msg.ContactMessage.ContextInfo == nil {
 				msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1702,7 +1542,6 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 			msg.ContactMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 	}
-	
 
 	if len(contextInfo.MentionedJID) > 0 {
 
@@ -1712,7 +1551,7 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 				mentionedJIDs = append(mentionedJIDs, jid.String())
 			}
 		}
-		
+
 		if len(mentionedJIDs) > 0 {
 
 			if msg.ExtendedTextMessage != nil {
@@ -1721,7 +1560,6 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 				}
 				msg.ExtendedTextMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
 
 			if msg.ImageMessage != nil {
 				if msg.ImageMessage.ContextInfo == nil {
@@ -1729,42 +1567,42 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 				}
 				msg.ImageMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.AudioMessage != nil {
 				if msg.AudioMessage.ContextInfo == nil {
 					msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.AudioMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.VideoMessage != nil {
 				if msg.VideoMessage.ContextInfo == nil {
 					msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.VideoMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.DocumentMessage != nil {
 				if msg.DocumentMessage.ContextInfo == nil {
 					msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.DocumentMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.StickerMessage != nil {
 				if msg.StickerMessage.ContextInfo == nil {
 					msg.StickerMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.StickerMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.LocationMessage != nil {
 				if msg.LocationMessage.ContextInfo == nil {
 					msg.LocationMessage.ContextInfo = &waE2E.ContextInfo{}
 				}
 				msg.LocationMessage.ContextInfo.MentionedJID = mentionedJIDs
 			}
-			
+
 			if msg.ContactMessage != nil {
 				if msg.ContactMessage.ContextInfo == nil {
 					msg.ContactMessage.ContextInfo = &waE2E.ContextInfo{}
@@ -1775,19 +1613,16 @@ func (h *MessageHandler) addContextInfo(msg *waE2E.Message, contextInfo *dto.Con
 	}
 }
 
-
 func (h *MessageHandler) processMediaData(mediaData string) ([]byte, error) {
 	if strings.HasPrefix(mediaData, "data:") {
 
 		return h.decodeBase64Media(mediaData)
 	} else if strings.HasPrefix(mediaData, "http://") || strings.HasPrefix(mediaData, "https://") {
-
 		return h.downloadMediaFromURL(mediaData)
 	}
 
 	return nil, fmt.Errorf("invalid media data format")
 }
-
 
 func (h *MessageHandler) downloadMediaFromURL(url string) ([]byte, error) {
 	resp, err := http.Get(url)
@@ -1808,65 +1643,54 @@ func (h *MessageHandler) downloadMediaFromURL(url string) ([]byte, error) {
 	return data, nil
 }
 
-
 func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dto.SendMediaRequest) error {
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
-
 	if err := h.validateMediaRequest(&req); err != nil {
 		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
-
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
-
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
 		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
-
 
 	messageID := req.MessageID
 	if messageID == "" {
 		messageID = client.GenerateMessageID()
 	}
 
-
 	filedata, err := h.processMediaData(req.Media)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to process media: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
 	}
-
 
 	uploaded, err := client.Upload(context.Background(), filedata, whatsmeow.MediaType(req.Type))
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
-
 	msg, err := h.buildMediaMessage(req, filedata, uploaded)
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to build message: %v", err), "MESSAGE_BUILD_FAILED", fiber.StatusInternalServerError)
 	}
 
-
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
-
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		return h.sendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
-
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message_id": messageID,
@@ -1877,7 +1701,6 @@ func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dt
 	})
 }
 
-// getWhatsAppClient é uma função helper para obter o cliente WhatsApp corretamente
 func (h *MessageHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
@@ -1887,13 +1710,11 @@ func (h *MessageHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client,
 
 	h.logger.Debug().Str("session_id", sessionID).Str("client_type", fmt.Sprintf("%T", clientInterface)).Msg("Got client interface")
 
-	// Tentar cast direto primeiro (pode funcionar em alguns casos)
 	if client, ok := clientInterface.(*whatsmeow.Client); ok {
 		h.logger.Debug().Str("session_id", sessionID).Msg("Direct cast successful")
 		return client, nil
 	}
 
-	// Usar type assertion com interface para acessar GetClient
 	type ClientGetter interface {
 		GetClient() *whatsmeow.Client
 	}
