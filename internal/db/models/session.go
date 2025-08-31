@@ -43,6 +43,7 @@ type Session struct {
 	MessagesSent     int            `json:"messages_sent" db:"messages_sent"`
 	Reconnections    int            `json:"reconnections" db:"reconnections"`
 	LastActivity     *time.Time     `json:"last_activity,omitempty" db:"last_activity"`
+	QRCode           *string        `json:"qr_code,omitempty" db:"qrcode"`
 }
 
 

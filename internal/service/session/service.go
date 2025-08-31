@@ -104,13 +104,13 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Inicializar sessão no WhatsApp manager
+
 	if manager, ok := s.manager.(interface {
 		InitializeNewSession(*models.Session) error
 	}); ok {
 		if err := manager.InitializeNewSession(session); err != nil {
 			s.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to initialize session in WhatsApp manager")
-			// Não retornar erro aqui, pois a sessão foi criada no banco
+
 		} else {
 			s.logger.Info().Str("session_id", session.ID.String()).Msg("Session initialized in WhatsApp manager")
 		}

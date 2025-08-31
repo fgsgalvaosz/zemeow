@@ -164,7 +164,10 @@ func (m *Manager) GetSessionStatus(sessionID string) (models.SessionStatus, erro
 }
 
 func (m *Manager) GetQRCode(sessionID string) (interface{}, error) {
-
+	// Multi-device architecture: Connect session which will:
+	// 1. Check if device exists in container (GetFirstDevice)
+	// 2. If exists: reconnect directly (no QR needed)
+	// 3. If not exists: create new device (NewDevice) and generate QR
 	qrData, err := m.whatsappMgr.ConnectSession(sessionID)
 	if err != nil {
 		return nil, err
@@ -233,7 +236,7 @@ func (m *Manager) ClearCache() {
 	m.cache.Clear()
 }
 
-// InitializeNewSession inicializa uma nova sessão no WhatsApp Manager
+
 func (m *Manager) InitializeNewSession(session *models.Session) error {
 	return m.whatsappMgr.InitializeSession(session)
 }

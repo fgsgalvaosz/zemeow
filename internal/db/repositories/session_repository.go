@@ -24,6 +24,7 @@ type SessionRepository interface {
 	UpdateStatus(identifier string, status models.SessionStatus) error
 	UpdateStatusAndJID(identifier string, status models.SessionStatus, jid *string) error
 	UpdateJID(identifier string, jid *string) error
+	UpdateQRCode(identifier string, qrCode string) error
 	ClearQRCode(identifier string) error
 	Delete(id uuid.UUID) error
 	DeleteByIdentifier(identifier string) error
@@ -75,7 +76,7 @@ func (r *sessionRepository) Create(session *models.Session) error {
 	`
 
 	_, err := r.db.Exec(query,
-		session.ID, session.Name, session.APIKey, session.JID, session.Status,
+		session.ID, session.Name, session.APIKey, session.JID, string(session.Status),
 		session.ProxyEnabled, session.ProxyHost, session.ProxyPort, session.ProxyUsername, session.ProxyPassword,
 		session.WebhookURL, session.WebhookEvents, session.CreatedAt, session.UpdatedAt, session.Metadata,
 	)
@@ -94,15 +95,16 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	query := `
 		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata
+		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qrcode
 		FROM sessions WHERE id = $1
 	`
 
 	session := &models.Session{}
+	var qrcode sql.NullString
 	err := r.db.QueryRow(query, id).Scan(
 		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
-		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata,
+		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
 	)
 
 	if err != nil {
@@ -111,6 +113,11 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 		}
 		r.logger.Error().Err(err).Str("id", id.String()).Msg("Failed to get session by ID")
 		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+
+	if qrcode.Valid {
+		session.QRCode = &qrcode.String
 	}
 
 	return session, nil
@@ -324,7 +331,7 @@ func (r *sessionRepository) Update(session *models.Session) error {
 	`
 
 	result, err := r.db.Exec(query,
-		session.ID, session.Name, session.JID, session.Status,
+		session.ID, session.Name, session.JID, string(session.Status),
 		session.ProxyEnabled, session.ProxyHost, session.ProxyPort, session.ProxyUsername, session.ProxyPassword,
 		session.WebhookURL, session.WebhookEvents, session.UpdatedAt, session.LastConnectedAt, session.Metadata,
 	)
@@ -372,7 +379,7 @@ func (r *sessionRepository) UpdateStatus(sessionID string, status models.Session
 		`
 	}
 
-	result, err := r.db.Exec(query, sessionID, status, now, lastConnectedAt)
+	result, err := r.db.Exec(query, sessionID, string(status), now, lastConnectedAt)
 	if err != nil {
 		r.logger.Error().Err(err).Str("session_id", sessionID).Str("status", string(status)).Msg("Failed to update session status")
 		return fmt.Errorf("failed to update session status: %w", err)
@@ -396,22 +403,29 @@ func (r *sessionRepository) UpdateStatusAndJID(identifier string, status models.
 	var query string
 	var args []interface{}
 
-	// Primeiro tentar como UUID
+	statusStr := string(status)
+	now := time.Now()
+	var lastConnectedAt *time.Time
+
+	// Set last_connected_at only for connected/authenticated status
+	if status == models.SessionStatusConnected || status == models.SessionStatusAuthenticated {
+		lastConnectedAt = &now
+	}
+
 	if id, err := uuid.Parse(identifier); err == nil {
 		query = `
 			UPDATE sessions
-			SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
-			WHERE id = $3
+			SET status = $1, jid = $2, updated_at = $3, last_connected_at = COALESCE($4, last_connected_at)
+			WHERE id = $5
 		`
-		args = []interface{}{status, jid, id}
+		args = []interface{}{statusStr, jid, now, lastConnectedAt, id}
 	} else {
-		// Se não for UUID válido, usar como nome
 		query = `
 			UPDATE sessions
-			SET status = $1, jid = $2, updated_at = CURRENT_TIMESTAMP, last_connected_at = CASE WHEN $1 = 'connected' THEN CURRENT_TIMESTAMP ELSE last_connected_at END
-			WHERE name = $3
+			SET status = $1, jid = $2, updated_at = $3, last_connected_at = COALESCE($4, last_connected_at)
+			WHERE name = $5
 		`
-		args = []interface{}{status, jid, identifier}
+		args = []interface{}{statusStr, jid, now, lastConnectedAt, identifier}
 	}
 
 	result, err := r.db.Exec(query, args...)
@@ -442,7 +456,7 @@ func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
 	var query string
 	var args []interface{}
 
-	// Primeiro tentar como UUID
+
 	if id, err := uuid.Parse(identifier); err == nil {
 		query = `
 			UPDATE sessions
@@ -451,7 +465,7 @@ func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
 		`
 		args = []interface{}{jid, id}
 	} else {
-		// Se não for UUID válido, usar como nome
+
 		query = `
 			UPDATE sessions
 			SET jid = $1, updated_at = CURRENT_TIMESTAMP
@@ -484,17 +498,126 @@ func (r *sessionRepository) UpdateJID(identifier string, jid *string) error {
 }
 
 
-func (r *sessionRepository) ClearQRCode(sessionID string) error {
+func (r *sessionRepository) UpdateQRCode(identifier string, qrCode string) error {
+	var query string
+	var args []interface{}
 
-	r.logger.Info().Str("session_id", sessionID).Msg("QR code cleared (placeholder)")
+
+	if id, err := uuid.Parse(identifier); err == nil {
+		query = `
+			UPDATE sessions
+			SET qrcode = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`
+		args = []interface{}{qrCode, id}
+	} else {
+
+		query = `
+			UPDATE sessions
+			SET qrcode = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE name = $2
+		`
+		args = []interface{}{qrCode, identifier}
+	}
+
+	result, err := r.db.Exec(query, args...)
+	if err != nil {
+		r.logger.Error().Err(err).Str("session_identifier", identifier).Msg("Failed to update session QR code")
+		return fmt.Errorf("failed to update session QR code: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	r.logger.Info().Str("session_identifier", identifier).Msg("Session QR code updated successfully")
+	return nil
+}
+
+func (r *sessionRepository) ClearQRCode(identifier string) error {
+	var query string
+	var args []interface{}
+
+
+	if id, err := uuid.Parse(identifier); err == nil {
+		query = `
+			UPDATE sessions
+			SET qrcode = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`
+		args = []interface{}{id}
+	} else {
+
+		query = `
+			UPDATE sessions
+			SET qrcode = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE name = $1
+		`
+		args = []interface{}{identifier}
+	}
+
+	result, err := r.db.Exec(query, args...)
+	if err != nil {
+		r.logger.Error().Err(err).Str("session_identifier", identifier).Msg("Failed to clear session QR code")
+		return fmt.Errorf("failed to clear session QR code: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	r.logger.Info().Str("session_identifier", identifier).Msg("Session QR code cleared successfully")
 	return nil
 }
 
 
 func (r *sessionRepository) Delete(id uuid.UUID) error {
-	query := "DELETE FROM sessions WHERE id = $1"
+	// Primeiro, obter o JID da sessão para limpar dados do WhatsApp
+	var jid sql.NullString
+	jidQuery := "SELECT jid FROM sessions WHERE id = $1"
+	err := r.db.QueryRow(jidQuery, id).Scan(&jid)
+	if err != nil && err != sql.ErrNoRows {
+		r.logger.Error().Err(err).Str("id", id.String()).Msg("Failed to get session JID for cleanup")
+		return fmt.Errorf("failed to get session JID: %w", err)
+	}
 
-	result, err := r.db.Exec(query, id)
+	// Iniciar transação para garantir consistência
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Se há JID, limpar dados do WhatsApp primeiro
+	if jid.Valid && jid.String != "" {
+		r.logger.Info().Str("id", id.String()).Str("jid", jid.String).Msg("Cleaning up WhatsApp data for session")
+
+		// Deletar apenas whatsmeow_device - as outras tabelas serão limpas automaticamente
+		// devido às foreign keys CASCADE que já existem no whatsmeow
+		deleteQuery := "DELETE FROM whatsmeow_device WHERE jid = $1"
+		result, err := tx.Exec(deleteQuery, jid.String)
+		if err != nil {
+			r.logger.Warn().Err(err).Str("jid", jid.String).Msg("Failed to delete WhatsApp device (continuing)")
+		} else {
+			if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
+				r.logger.Info().Str("jid", jid.String).Int64("rows", rowsAffected).Msg("WhatsApp device and related data cleaned via CASCADE")
+			}
+		}
+	}
+
+	// Deletar a sessão
+	sessionQuery := "DELETE FROM sessions WHERE id = $1"
+	result, err := tx.Exec(sessionQuery, id)
 	if err != nil {
 		r.logger.Error().Err(err).Str("id", id.String()).Msg("Failed to delete session")
 		return fmt.Errorf("failed to delete session: %w", err)
@@ -509,7 +632,12 @@ func (r *sessionRepository) Delete(id uuid.UUID) error {
 		return fmt.Errorf("session not found")
 	}
 
-	r.logger.Info().Str("id", id.String()).Msg("Session deleted successfully")
+	// Commit da transação
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	r.logger.Info().Str("id", id.String()).Msg("Session and associated WhatsApp data deleted successfully")
 	return nil
 }
 
@@ -527,25 +655,21 @@ func (r *sessionRepository) DeleteBySessionID(sessionID string) error {
 
 
 func (r *sessionRepository) DeleteByName(name string) error {
-	query := "DELETE FROM sessions WHERE name = $1"
-
-	result, err := r.db.Exec(query, name)
+	// Primeiro, obter o ID e JID da sessão
+	var id uuid.UUID
+	var jid sql.NullString
+	query := "SELECT id, jid FROM sessions WHERE name = $1"
+	err := r.db.QueryRow(query, name).Scan(&id, &jid)
 	if err != nil {
-		r.logger.Error().Err(err).Str("name", name).Msg("Failed to delete session by name")
-		return fmt.Errorf("failed to delete session: %w", err)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("session not found")
+		}
+		r.logger.Error().Err(err).Str("name", name).Msg("Failed to get session info for cleanup")
+		return fmt.Errorf("failed to get session info: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("session not found")
-	}
-
-	r.logger.Info().Str("name", name).Msg("Session deleted successfully")
-	return nil
+	// Usar o método Delete principal que já tem a lógica de limpeza
+	return r.Delete(id)
 }
 
 
@@ -560,9 +684,9 @@ func (r *sessionRepository) DeleteByIdentifier(identifier string) error {
 }
 
 
-// Exists verifica se uma sessão existe (aceita UUID ou nome)
+
 func (r *sessionRepository) Exists(identifier string) (bool, error) {
-	// Primeiro tentar como UUID
+
 	if id, err := uuid.Parse(identifier); err == nil {
 		query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1)"
 		var exists bool
@@ -574,7 +698,7 @@ func (r *sessionRepository) Exists(identifier string) (bool, error) {
 		return exists, nil
 	}
 
-	// Se não for UUID válido, tentar como nome
+
 	query := "SELECT EXISTS(SELECT 1 FROM sessions WHERE name = $1)"
 	var exists bool
 	err := r.db.QueryRow(query, identifier).Scan(&exists)

@@ -106,6 +106,21 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		c.mu.Unlock()
 
 		c.logger.Info().Msg("Connected to WhatsApp")
+
+		// Se já estamos logados (reconexão), garantir que o JID está atualizado
+		if c.client.IsLoggedIn() && c.client.Store.ID != nil {
+			jid := c.client.Store.ID.String()
+			c.logger.Info().Str("jid", jid).Msg("Device already logged in, ensuring JID is updated")
+
+			c.mu.RLock()
+			callback := c.onPairSuccess
+			c.mu.RUnlock()
+
+			if callback != nil {
+				callback(c.sessionID, jid)
+			}
+		}
+
 		c.sendWebhookEvent("connected", map[string]interface{}{
 			"session_id": c.sessionID,
 			"timestamp":  time.Now().Unix(),

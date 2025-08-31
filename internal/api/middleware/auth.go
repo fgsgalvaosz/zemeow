@@ -158,11 +158,7 @@ func (am *AuthMiddleware) RequireAPIKey() fiber.Handler {
 func (am *AuthMiddleware) RequireGlobalAPIKey() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 
-		am.logger.Info().Interface("headers", c.GetReqHeaders()).Msg("DEBUG: All request headers")
-
-
 		apiKey := am.extractAPIKey(c)
-		am.logger.Info().Str("extracted_api_key", apiKey).Str("expected_admin_key", am.adminAPIKey).Msg("DEBUG: API key comparison")
 
 		if apiKey == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
