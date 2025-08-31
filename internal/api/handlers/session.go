@@ -304,6 +304,17 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 }
 
 
+// @Summary Deletar sessão
+// @Description Remove uma sessão WhatsApp e todos os dados associados
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Sessão deletada com sucesso"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId} [delete]
 func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -544,6 +555,17 @@ func (h *SessionHandler) GetActiveConnections(c *fiber.Ctx) error {
 }
 
 
+// @Summary Fazer logout da sessão
+// @Description Desconecta e remove os dados de autenticação da sessão WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Logout realizado com sucesso"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/logout [post]
 func (h *SessionHandler) LogoutSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -558,6 +580,17 @@ func (h *SessionHandler) LogoutSession(c *fiber.Ctx) error {
 }
 
 
+// @Summary Obter status da sessão
+// @Description Retorna o status atual da conexão WhatsApp da sessão
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Status da sessão"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/status [get]
 func (h *SessionHandler) GetSessionStatus(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
@@ -628,6 +661,18 @@ func (h *SessionHandler) TestProxy(c *fiber.Ctx) error {
 
 
 
+// @Summary Definir presença
+// @Description Define o status de presença da sessão WhatsApp (disponível/indisponível)
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SessionPresenceRequest true "Status de presença"
+// @Success 200 {object} map[string]interface{} "Presença definida com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/presence [post]
 func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -637,14 +682,9 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -691,14 +731,9 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -779,6 +814,18 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter informações de contato
+// @Description Retorna informações detalhadas de um contato WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.ContactInfoRequest true "Dados do contato"
+// @Success 200 {object} map[string]interface{} "Informações do contato"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/info [post]
 func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -788,14 +835,9 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -884,6 +926,18 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter avatar de contato
+// @Description Retorna o avatar/foto de perfil de um contato WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.ContactAvatarRequest true "Dados do contato"
+// @Success 200 {object} map[string]interface{} "Avatar do contato"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/avatar [post]
 func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -893,14 +947,9 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -971,18 +1020,24 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 
 
 
+// @Summary Listar contatos
+// @Description Retorna a lista de contatos da sessão WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Lista de contatos"
+// @Failure 400 {object} map[string]interface{} "Sessão não encontrada"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/contacts [get]
 func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1085,6 +1140,18 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 
 
 
+// @Summary Parear telefone
+// @Description Inicia o processo de pareamento via número de telefone (alternativa ao QR code)
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.PairPhoneRequest true "Número do telefone"
+// @Success 200 {object} map[string]interface{} "Pareamento iniciado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
+// @Router /sessions/{sessionId}/pairphone [post]
 func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1094,14 +1161,9 @@ func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1142,6 +1204,18 @@ func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
 
 
 
+// @Summary Configurar proxy
+// @Description Configura as definições de proxy para a sessão WhatsApp
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.ProxyConfigRequest true "Configurações do proxy"
+// @Success 200 {object} map[string]interface{} "Proxy configurado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/proxy [post]
 func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1206,6 +1280,18 @@ func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
 
 
 
+// @Summary Configurar S3
+// @Description Configura as definições de armazenamento S3 para a sessão
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.S3ConfigRequest true "Configurações do S3"
+// @Success 200 {object} map[string]interface{} "S3 configurado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/s3/config [post]
 func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1256,6 +1342,17 @@ func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter configuração S3
+// @Description Retorna as configurações atuais de armazenamento S3 da sessão
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Configurações do S3"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/s3/config [get]
 func (h *SessionHandler) GetS3Config(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1281,6 +1378,17 @@ func (h *SessionHandler) GetS3Config(c *fiber.Ctx) error {
 
 
 
+// @Summary Deletar configuração S3
+// @Description Remove as configurações de armazenamento S3 da sessão
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Configuração S3 removida com sucesso"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
+// @Router /sessions/{sessionId}/s3/config [delete]
 func (h *SessionHandler) DeleteS3Config(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1298,6 +1406,17 @@ func (h *SessionHandler) DeleteS3Config(c *fiber.Ctx) error {
 
 
 
+// @Summary Testar conexão S3
+// @Description Testa a conectividade com o serviço S3 configurado para a sessão
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Teste de conexão S3 realizado"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 500 {object} map[string]interface{} "Erro na conexão S3"
+// @Router /sessions/{sessionId}/s3/test [post]
 func (h *SessionHandler) TestS3Connection(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1327,14 +1446,9 @@ func (h *SessionHandler) ListNewsletters(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1380,4 +1494,36 @@ func (h *SessionHandler) sendError(c *fiber.Ctx, message, code string, statusCod
 			"code":    code,
 		},
 	})
+}
+
+// getWhatsAppClient é uma função helper para obter o cliente WhatsApp corretamente
+func (h *SessionHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err != nil {
+		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get WhatsApp client from session service")
+		return nil, fmt.Errorf("session not found or not connected: %w", err)
+	}
+
+	h.logger.Debug().Str("session_id", sessionID).Str("client_type", fmt.Sprintf("%T", clientInterface)).Msg("Got client interface")
+
+	// Tentar cast direto primeiro (pode funcionar em alguns casos)
+	if client, ok := clientInterface.(*whatsmeow.Client); ok {
+		h.logger.Debug().Str("session_id", sessionID).Msg("Direct cast successful")
+		return client, nil
+	}
+
+	// Usar type assertion com interface para acessar GetClient
+	type ClientGetter interface {
+		GetClient() *whatsmeow.Client
+	}
+
+	clientGetter, ok := clientInterface.(ClientGetter)
+	if !ok {
+		h.logger.Error().Str("session_id", sessionID).Str("client_type", fmt.Sprintf("%T", clientInterface)).Msg("Client does not implement GetClient method")
+		return nil, fmt.Errorf("client does not implement GetClient method, type: %T", clientInterface)
+	}
+
+	client := clientGetter.GetClient()
+	h.logger.Debug().Str("session_id", sessionID).Msg("GetClient method successful")
+	return client, nil
 }

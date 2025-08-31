@@ -76,15 +76,9 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -127,6 +121,19 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 }
 
 
+// @Summary Enviar mídia
+// @Description Envia arquivos de mídia (imagem, vídeo, áudio, documento) via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendMediaRequest true "Dados da mídia"
+// @Success 200 {object} map[string]interface{} "Mídia enviada com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/media [post]
 func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -147,15 +154,9 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -228,6 +229,19 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 }
 
 
+// @Summary Enviar localização
+// @Description Envia uma localização geográfica via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendLocationRequest true "Dados da localização"
+// @Success 200 {object} map[string]interface{} "Localização enviada com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/location [post]
 func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -248,15 +262,9 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -301,6 +309,19 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 }
 
 
+// @Summary Enviar contato
+// @Description Envia um cartão de contato via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendContactRequest true "Dados do contato"
+// @Success 200 {object} map[string]interface{} "Contato enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/contact [post]
 func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -321,15 +342,9 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -376,6 +391,19 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar sticker
+// @Description Envia um sticker/figurinha via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendStickerRequest true "Dados do sticker"
+// @Success 200 {object} map[string]interface{} "Sticker enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/sticker [post]
 func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -385,14 +413,9 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -453,6 +476,19 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 
 
 
+// @Summary Reagir a mensagem
+// @Description Envia uma reação (emoji) para uma mensagem específica
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.ReactRequest true "Dados da reação"
+// @Success 200 {object} map[string]interface{} "Reação enviada com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/reaction [post]
 func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -462,14 +498,9 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -516,14 +547,9 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -572,14 +598,9 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -623,6 +644,18 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 
 
 
+// @Summary Marcar como lida
+// @Description Marca uma mensagem como lida no WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.MarkReadRequest true "Dados da mensagem"
+// @Success 200 {object} map[string]interface{} "Mensagem marcada como lida"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /sessions/{sessionId}/messages/read [post]
 func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -632,14 +665,9 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -741,6 +769,18 @@ func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 
 
 
+// @Summary Enviar botões interativos
+// @Description Envia uma mensagem com botões interativos via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendButtonsRequest true "Dados dos botões"
+// @Success 200 {object} map[string]interface{} "Botões enviados com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
+// @Router /sessions/{sessionId}/send/buttons [post]
 func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -750,14 +790,9 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -775,49 +810,92 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 
 
 
-	h.logger.Warn().
-		Str("session_id", sessionID).
-		Str("to", req.To).
-		Int("buttons_count", len(req.Buttons)).
-		Msg("Interactive buttons requested - sending as text fallback")
-
-
-	buttonText := req.Text + "\n\n"
-	for i, button := range req.Buttons {
-		buttonText += fmt.Sprintf("%d. %s\n", i+1, button.Text)
-	}
-	if req.Footer != "" {
-		buttonText += "\n" + req.Footer
+	// Criar botões interativos reais
+	var buttons []*waE2E.ButtonsMessage_Button
+	for _, btn := range req.Buttons {
+		button := &waE2E.ButtonsMessage_Button{
+			ButtonID:     proto.String(btn.ID),
+			ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
+				DisplayText: proto.String(btn.Text),
+			},
+			Type: waE2E.ButtonsMessage_Button_RESPONSE.Enum(),
+		}
+		buttons = append(buttons, button)
 	}
 
-
+	// Criar mensagem com botões
 	msg := &waE2E.Message{
-		Conversation: proto.String(buttonText),
+		ButtonsMessage: &waE2E.ButtonsMessage{
+			ContentText: proto.String(req.Text),
+			FooterText:  proto.String(req.Footer),
+			Buttons:     buttons,
+		},
 	}
 
-
+	// Adicionar informações de contexto se fornecidas
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
 
-
+	// Enviar mensagem
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send buttons: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Msg("Failed to send interactive buttons, trying text fallback")
+
+		// Fallback para texto simples se botões interativos falharem
+		buttonText := req.Text + "\n\n"
+		for i, button := range req.Buttons {
+			buttonText += fmt.Sprintf("%d. %s\n", i+1, button.Text)
+		}
+		if req.Footer != "" {
+			buttonText += "\n" + req.Footer
+		}
+
+		textMsg := &waE2E.Message{
+			Conversation: proto.String(buttonText),
+		}
+
+		response, err = client.SendMessage(context.Background(), recipient, textMsg, whatsmeow.SendRequestExtra{ID: messageID})
+		if err != nil {
+			return h.sendError(c, fmt.Sprintf("Failed to send buttons: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"success":    true,
+			"message_id": messageID,
+			"status":     "sent_as_text_fallback",
+			"timestamp":  response.Timestamp,
+			"recipient":  req.To,
+			"note":       "Interactive buttons failed, sent as text fallback",
+		})
 	}
+
+	h.logger.Info().Str("session_id", sessionID).Str("to", req.To).Int("buttons_count", len(req.Buttons)).Msg("Interactive buttons sent successfully")
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success":    true,
 		"message_id": messageID,
-		"status":     "sent_as_text",
+		"status":     "sent_interactive",
 		"timestamp":  response.Timestamp,
 		"recipient":  req.To,
-		"note":       "Interactive buttons sent as text fallback - requires WhatsApp Business API for full functionality",
+		"buttons":    len(req.Buttons),
 	})
 }
 
 
 
+// @Summary Enviar lista interativa
+// @Description Envia uma mensagem com lista de opções interativa via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendListRequest true "Dados da lista"
+// @Success 200 {object} map[string]interface{} "Lista enviada com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
+// @Router /sessions/{sessionId}/send/list [post]
 func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -827,14 +905,9 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -852,51 +925,92 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 
 
 
-	h.logger.Warn().
-		Str("session_id", sessionID).
-		Str("to", req.To).
-		Int("sections_count", len(req.Sections)).
-		Msg("Interactive list requested - sending as text fallback")
-
-
-	listText := req.Text + "\n\n" + req.Title + "\n"
+	// Criar seções da lista interativa
+	var sections []*waE2E.ListMessage_Section
 	for _, section := range req.Sections {
-		listText += "\n" + section.Title + ":\n"
-		for i, row := range section.Rows {
-			listText += fmt.Sprintf("%d. %s", i+1, row.Title)
-			if row.Description != "" {
-				listText += " - " + row.Description
+		var rows []*waE2E.ListMessage_Row
+		for _, row := range section.Rows {
+			listRow := &waE2E.ListMessage_Row{
+				RowID:       proto.String(row.ID),
+				Title:       proto.String(row.Title),
+				Description: proto.String(row.Description),
 			}
-			listText += "\n"
+			rows = append(rows, listRow)
 		}
-	}
-	if req.Footer != "" {
-		listText += "\n" + req.Footer
+
+		listSection := &waE2E.ListMessage_Section{
+			Title: proto.String(section.Title),
+			Rows:  rows,
+		}
+		sections = append(sections, listSection)
 	}
 
-
+	// Criar mensagem com lista
 	msg := &waE2E.Message{
-		Conversation: proto.String(listText),
+		ListMessage: &waE2E.ListMessage{
+			Title:       proto.String(req.Title),
+			Description: proto.String(req.Text),
+			FooterText:  proto.String(req.Footer),
+			ButtonText:  proto.String(req.ButtonText),
+			ListType:    waE2E.ListMessage_SINGLE_SELECT.Enum(),
+			Sections:    sections,
+		},
 	}
 
-
+	// Adicionar informações de contexto se fornecidas
 	if req.ContextInfo != nil {
 		h.addContextInfo(msg, req.ContextInfo)
 	}
 
-
+	// Enviar mensagem
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send list: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Msg("Failed to send interactive list, trying text fallback")
+
+		// Fallback para texto simples se lista interativa falhar
+		listText := req.Text + "\n\n" + req.Title + "\n"
+		for _, section := range req.Sections {
+			listText += "\n" + section.Title + ":\n"
+			for i, row := range section.Rows {
+				listText += fmt.Sprintf("%d. %s", i+1, row.Title)
+				if row.Description != "" {
+					listText += " - " + row.Description
+				}
+				listText += "\n"
+			}
+		}
+		if req.Footer != "" {
+			listText += "\n" + req.Footer
+		}
+
+		textMsg := &waE2E.Message{
+			Conversation: proto.String(listText),
+		}
+
+		response, err = client.SendMessage(context.Background(), recipient, textMsg, whatsmeow.SendRequestExtra{ID: messageID})
+		if err != nil {
+			return h.sendError(c, fmt.Sprintf("Failed to send list: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"success":    true,
+			"message_id": messageID,
+			"status":     "sent_as_text_fallback",
+			"timestamp":  response.Timestamp,
+			"recipient":  req.To,
+			"note":       "Interactive list failed, sent as text fallback",
+		})
 	}
+
+	h.logger.Info().Str("session_id", sessionID).Str("to", req.To).Int("sections_count", len(req.Sections)).Msg("Interactive list sent successfully")
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"success":    true,
 		"message_id": messageID,
-		"status":     "sent_as_text",
+		"status":     "sent_interactive",
 		"timestamp":  response.Timestamp,
 		"recipient":  req.To,
-		"note":       "Interactive list sent as text fallback - requires WhatsApp Business API for full functionality",
+		"sections":   len(req.Sections),
 	})
 }
 
@@ -911,14 +1025,9 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1000,14 +1109,9 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1063,6 +1167,19 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar imagem
+// @Description Envia uma imagem via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendImageRequest true "Dados da imagem"
+// @Success 200 {object} map[string]interface{} "Imagem enviada com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/image [post]
 func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 	var req dto.SendImageRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1075,6 +1192,19 @@ func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar áudio
+// @Description Envia um arquivo de áudio via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendAudioRequest true "Dados do áudio"
+// @Success 200 {object} map[string]interface{} "Áudio enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/audio [post]
 func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 	var req dto.SendAudioRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1087,6 +1217,19 @@ func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar documento
+// @Description Envia um documento/arquivo via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendDocumentRequest true "Dados do documento"
+// @Success 200 {object} map[string]interface{} "Documento enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/document [post]
 func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 	var req dto.SendDocumentRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1099,6 +1242,19 @@ func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar vídeo
+// @Description Envia um vídeo via WhatsApp
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.SendVideoRequest true "Dados do vídeo"
+// @Success 200 {object} map[string]interface{} "Vídeo enviado com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/send/video [post]
 func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 	var req dto.SendVideoRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1110,23 +1266,65 @@ func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 }
 
 
+// @Summary Listar mensagens
+// @Description Retorna o histórico de mensagens da sessão
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Lista de mensagens"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /sessions/{sessionId}/messages [get]
 func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
+
 
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
+	// Obter parâmetros de query
+	phone := c.Query("phone")
+	limit := c.QueryInt("limit", 20)
+	offset := c.QueryInt("offset", 0)
+
+	if phone == "" {
+		return h.sendError(c, "Phone number is required", "MISSING_PHONE", fiber.StatusBadRequest)
+	}
+
+	// Por enquanto, retornar mensagens vazias até implementar o repositório
+	// TODO: Implementar recuperação real de mensagens do banco de dados
+
+	h.logger.Info().Str("session_id", sessionID).Str("phone", phone).Msg("GetMessages called - returning empty for now")
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"data":    []interface{}{},
+		"data": map[string]interface{}{
+			"messages": []interface{}{},
+			"pagination": map[string]interface{}{
+				"limit":  limit,
+				"offset": offset,
+				"total":  0,
+			},
+		},
+		"note": "Message history retrieval will be implemented with database integration",
 	})
 }
 
 
 
+// @Summary Obter status da mensagem
+// @Description Retorna o status de entrega de uma mensagem específica
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param messageId path string true "ID da mensagem"
+// @Success 200 {object} map[string]interface{} "Status da mensagem"
+// @Failure 400 {object} map[string]interface{} "ID inválido"
+// @Router /sessions/{sessionId}/messages/{messageId}/status [get]
 func (h *MessageHandler) GetMessageStatus(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	messageID := c.Params("messageId")
@@ -1141,6 +1339,17 @@ func (h *MessageHandler) GetMessageStatus(c *fiber.Ctx) error {
 
 
 
+// @Summary Enviar mensagens em lote
+// @Description Envia múltiplas mensagens de uma vez para diferentes destinatários
+// @Tags messages
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body map[string]interface{} true "Lista de mensagens"
+// @Success 200 {object} map[string]interface{} "Mensagens enviadas em lote"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Router /sessions/{sessionId}/send/bulk [post]
 func (h *MessageHandler) SendBulkMessages(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	return c.JSON(fiber.Map{
@@ -1612,15 +1821,9 @@ func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dt
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -1672,4 +1875,36 @@ func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dt
 		"recipient":  req.To,
 		"type":       req.Type,
 	})
+}
+
+// getWhatsAppClient é uma função helper para obter o cliente WhatsApp corretamente
+func (h *MessageHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err != nil {
+		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get WhatsApp client from session service")
+		return nil, fmt.Errorf("session not found or not connected: %w", err)
+	}
+
+	h.logger.Debug().Str("session_id", sessionID).Str("client_type", fmt.Sprintf("%T", clientInterface)).Msg("Got client interface")
+
+	// Tentar cast direto primeiro (pode funcionar em alguns casos)
+	if client, ok := clientInterface.(*whatsmeow.Client); ok {
+		h.logger.Debug().Str("session_id", sessionID).Msg("Direct cast successful")
+		return client, nil
+	}
+
+	// Usar type assertion com interface para acessar GetClient
+	type ClientGetter interface {
+		GetClient() *whatsmeow.Client
+	}
+
+	clientGetter, ok := clientInterface.(ClientGetter)
+	if !ok {
+		h.logger.Error().Str("session_id", sessionID).Str("client_type", fmt.Sprintf("%T", clientInterface)).Msg("Client does not implement GetClient method")
+		return nil, fmt.Errorf("client does not implement GetClient method, type: %T", clientInterface)
+	}
+
+	client := clientGetter.GetClient()
+	h.logger.Debug().Str("session_id", sessionID).Msg("GetClient method successful")
+	return client, nil
 }

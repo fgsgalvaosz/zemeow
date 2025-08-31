@@ -51,9 +51,7 @@ type MyClient struct {
 	logger        logger.Logger
 	webhookChan   chan<- WebhookEvent
 
-
 	onPairSuccess func(sessionID, jid string)
-
 
 	messagesReceived int64
 	messagesSent     int64
@@ -143,6 +141,7 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		c.mu.Unlock()
 
 		c.logger.Info().Str("from", v.Info.Sender.String()).Msg("Received message")
+
 		c.sendWebhookEvent("message", map[string]interface{}{
 			"session_id": c.sessionID,
 			"message_id": v.Info.ID,
@@ -196,6 +195,7 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"reason":     int(v.Reason),
 			"timestamp":  time.Now().Unix(),
 		})
+	// Outros eventos podem ser adicionados aqui conforme necessário
 	}
 }
 
@@ -321,3 +321,5 @@ func (c *MyClient) Logout() error {
 
 	return nil
 }
+
+

@@ -52,14 +52,9 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -167,14 +162,9 @@ func (h *GroupHandler) ListGroups(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -214,6 +204,19 @@ func (h *GroupHandler) ListGroups(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter informações do grupo
+// @Description Retorna informações detalhadas de um grupo WhatsApp
+// @Tags groups
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.GroupInfoRequest true "ID do grupo"
+// @Success 200 {object} map[string]interface{} "Informações do grupo"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/groups/info [post]
 func (h *GroupHandler) GetGroupInfo(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	
@@ -223,14 +226,9 @@ func (h *GroupHandler) GetGroupInfo(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -287,14 +285,9 @@ func (h *GroupHandler) GetInviteLink(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -322,6 +315,19 @@ func (h *GroupHandler) GetInviteLink(c *fiber.Ctx) error {
 
 
 
+// @Summary Sair do grupo
+// @Description Remove a sessão atual de um grupo WhatsApp
+// @Tags groups
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.LeaveGroupRequest true "ID do grupo"
+// @Success 200 {object} map[string]interface{} "Saiu do grupo com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/groups/leave [post]
 func (h *GroupHandler) LeaveGroup(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -331,14 +337,9 @@ func (h *GroupHandler) LeaveGroup(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -397,14 +398,9 @@ func (h *GroupHandler) SetGroupName(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -446,14 +442,9 @@ func (h *GroupHandler) SetGroupTopic(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -495,14 +486,9 @@ func (h *GroupHandler) SetGroupAnnounce(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -544,14 +530,9 @@ func (h *GroupHandler) SetGroupLocked(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -584,6 +565,18 @@ func (h *GroupHandler) SetGroupLocked(c *fiber.Ctx) error {
 
 
 
+// @Summary Entrar no grupo
+// @Description Entra em um grupo WhatsApp usando código de convite
+// @Tags groups
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.JoinGroupRequest true "Código de convite"
+// @Success 200 {object} map[string]interface{} "Entrou no grupo com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
+// @Router /sessions/{sessionId}/groups/join [post]
 func (h *GroupHandler) JoinGroup(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -592,16 +585,14 @@ func (h *GroupHandler) JoinGroup(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
+	// Verificar se a sessão existe
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
-
-
-
-	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("Join group functionality needs implementation")
+	// Por enquanto, retornar não implementado até corrigir a assinatura da função
+	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("JoinGroup needs proper implementation")
 
 	return h.sendError(c, "Join group functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
 
@@ -610,6 +601,19 @@ func (h *GroupHandler) JoinGroup(c *fiber.Ctx) error {
 
 
 
+// @Summary Gerenciar participantes do grupo
+// @Description Adiciona, remove, promove ou rebaixe participantes de um grupo WhatsApp
+// @Tags groups
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.UpdateGroupParticipantsRequest true "Ações nos participantes"
+// @Success 200 {object} map[string]interface{} "Participantes atualizados com sucesso"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/groups/participants [post]
 func (h *GroupHandler) UpdateParticipants(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -619,14 +623,9 @@ func (h *GroupHandler) UpdateParticipants(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -749,14 +748,9 @@ func (h *GroupHandler) RemoveGroupPhoto(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -798,14 +792,9 @@ func (h *GroupHandler) SetGroupEphemeral(c *fiber.Ctx) error {
 	}
 
 
-	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
-	}
-
-	client, ok := clientInterface.(*whatsmeow.Client)
-	if !ok {
-		return h.sendError(c, "Invalid WhatsApp client", "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 
@@ -838,6 +827,19 @@ func (h *GroupHandler) SetGroupEphemeral(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter informações do convite
+// @Description Retorna informações sobre um convite de grupo WhatsApp
+// @Tags groups
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body dto.GroupInviteInfoRequest true "Código de convite"
+// @Success 200 {object} map[string]interface{} "Informações do convite"
+// @Failure 400 {object} map[string]interface{} "Dados inválidos"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /sessions/{sessionId}/groups/invite/info [post]
 func (h *GroupHandler) GetInviteInfo(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -846,16 +848,14 @@ func (h *GroupHandler) GetInviteInfo(c *fiber.Ctx) error {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
-
+	// Verificar se a sessão existe
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
 		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
-
-
-
-	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("Get invite info functionality needs implementation")
+	// Por enquanto, retornar não implementado até corrigir a assinatura da função
+	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("GetInviteInfo needs proper implementation")
 
 	return h.sendError(c, "Get invite info functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
 }
@@ -869,4 +869,29 @@ func (h *GroupHandler) sendError(c *fiber.Ctx, message, code string, status int)
 		"error":   message,
 		"code":    code,
 	})
+}
+
+// getWhatsAppClient é uma função helper para obter o cliente WhatsApp corretamente
+func (h *GroupHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {
+	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("session not found or not connected: %w", err)
+	}
+
+	// Tentar cast direto primeiro (pode funcionar em alguns casos)
+	if client, ok := clientInterface.(*whatsmeow.Client); ok {
+		return client, nil
+	}
+
+	// Usar type assertion com interface para acessar GetClient
+	type ClientGetter interface {
+		GetClient() *whatsmeow.Client
+	}
+
+	clientGetter, ok := clientInterface.(ClientGetter)
+	if !ok {
+		return nil, fmt.Errorf("client does not implement GetClient method, type: %T", clientInterface)
+	}
+
+	return clientGetter.GetClient(), nil
 }

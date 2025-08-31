@@ -69,6 +69,17 @@ func (h *WebhookHandler) GetWebhookStats(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter estatísticas de webhooks da sessão
+// @Description Retorna estatísticas de webhooks específicas de uma sessão
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Estatísticas de webhooks da sessão"
+// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /webhooks/sessions/{sessionId}/stats [get]
 func (h *WebhookHandler) GetSessionWebhookStats(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	return c.JSON(fiber.Map{
@@ -81,6 +92,16 @@ func (h *WebhookHandler) GetSessionWebhookStats(c *fiber.Ctx) error {
 
 
 
+// @Summary Iniciar serviço de webhooks
+// @Description Inicia o serviço global de processamento de webhooks
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Serviço iniciado com sucesso"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /webhooks/start [post]
 func (h *WebhookHandler) StartWebhookService(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "started",
@@ -90,6 +111,16 @@ func (h *WebhookHandler) StartWebhookService(c *fiber.Ctx) error {
 
 
 
+// @Summary Parar serviço de webhooks
+// @Description Para o serviço global de processamento de webhooks
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Serviço parado com sucesso"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
+// @Router /webhooks/stop [post]
 func (h *WebhookHandler) StopWebhookService(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":  "stopped",
@@ -99,6 +130,15 @@ func (h *WebhookHandler) StopWebhookService(c *fiber.Ctx) error {
 
 
 
+// @Summary Obter status do serviço de webhooks
+// @Description Retorna o status atual do serviço global de webhooks
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} map[string]interface{} "Status do serviço de webhooks"
+// @Failure 403 {object} map[string]interface{} "Acesso negado"
+// @Router /webhooks/status [get]
 func (h *WebhookHandler) GetWebhookServiceStatus(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"running": true,
