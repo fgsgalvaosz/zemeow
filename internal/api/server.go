@@ -58,7 +58,7 @@ func NewServer(
 
 	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service), sessionRepo)
 	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service))
-	webhookHandler := handlers.NewWebhookHandler(webhookService)
+	webhookHandler := handlers.NewWebhookHandler(webhookService, sessionRepo)
 	groupHandler := handlers.NewGroupHandler(sessionService.(session.Service))
 
 

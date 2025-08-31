@@ -5,8 +5,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/lib/pq"
 
+	"github.com/felipe/zemeow/internal/api/dto"
 	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/webhook"
 )
@@ -15,13 +18,15 @@ import (
 type WebhookHandler struct {
 	logger         logger.Logger
 	webhookService *webhook.WebhookService
+	sessionRepo    repositories.SessionRepository
 }
 
 // NewWebhookHandler cria uma nova instância do WebhookHandler
-func NewWebhookHandler(webhookService *webhook.WebhookService) *WebhookHandler {
+func NewWebhookHandler(webhookService *webhook.WebhookService, sessionRepo repositories.SessionRepository) *WebhookHandler {
 	return &WebhookHandler{
 		logger:         logger.GetWithSession("webhook_handler"),
 		webhookService: webhookService,
+		sessionRepo:    sessionRepo,
 	}
 }
 
@@ -43,23 +48,32 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
 	}
-	
-	// TODO: Implementar busca de webhooks no banco de dados
-	// Por enquanto, retornamos uma resposta mock
+
+	// Buscar a sessão no banco de dados
+	session, err := h.sessionRepo.GetByIdentifier(sessionID)
+	if err != nil {
+		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+	}
+
+	webhooks := []map[string]interface{}{}
+
+	// Se há webhook configurado, adicionar à lista
+	if session.WebhookURL != nil && *session.WebhookURL != "" {
+		webhooks = append(webhooks, map[string]interface{}{
+			"id":         1,
+			"url":        *session.WebhookURL,
+			"events":     []string(session.WebhookEvents),
+			"active":     true,
+			"created_at": session.CreatedAt.Unix(),
+			"updated_at": session.UpdatedAt.Unix(),
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"session_id": sessionID,
-		"webhooks": []map[string]interface{}{
-			{
-				"id":         1,
-				"url":        "https://example.com/webhook",
-				"events":     []string{"message", "receipt", "presence"},
-				"active":     true,
-				"created_at": time.Now().Add(-24 * time.Hour).Unix(),
-				"updated_at": time.Now().Unix(),
-			},
-		},
-		"total":     1,
-		"timestamp": time.Now().Unix(),
+		"webhooks":   webhooks,
+		"total":      len(webhooks),
+		"timestamp":  time.Now().Unix(),
 	})
 }
 
@@ -71,24 +85,20 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param sessionId path string true "ID da sessão"
-// @Param webhook body object true "Configuração do webhook" example({"url":"https://example.com/webhook","events":["message","receipt"],"active":true})
+// @Param webhook body dto.WebhookConfigRequest true "Configuração do webhook"
 // @Success 200 {object} map[string]interface{} "Webhook configurado com sucesso"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Router /webhooks/sessions/{sessionId}/set [post]
 func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
-	
+
 	// Verificar acesso à sessão
 	if !h.hasSessionAccess(c, sessionID) {
 		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
 	}
-	
-	var req struct {
-		URL    string   `json:"url" validate:"required,url"`
-		Events []string `json:"events" validate:"required,min=1"`
-		Active bool     `json:"active"`
-	}
+
+	var req dto.WebhookConfigRequest
 	
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
@@ -101,9 +111,28 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 			return h.sendError(c, fmt.Sprintf("Invalid event: %s", event), "INVALID_EVENT", fiber.StatusBadRequest)
 		}
 	}
-	
-	// TODO: Salvar webhook no banco de dados
-	// Por enquanto, retornamos uma resposta de sucesso
+
+	// Buscar a sessão no banco de dados
+	session, err := h.sessionRepo.GetByIdentifier(sessionID)
+	if err != nil {
+		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+	}
+
+	// Atualizar configuração do webhook
+	if req.Active {
+		session.WebhookURL = &req.URL
+		session.WebhookEvents = pq.StringArray(req.Events)
+	} else {
+		session.WebhookURL = nil
+		session.WebhookEvents = nil
+	}
+
+	// Salvar no banco de dados
+	if err := h.sessionRepo.Update(session); err != nil {
+		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update webhook configuration")
+		return h.sendError(c, "Failed to save webhook configuration", "WEBHOOK_SAVE_FAILED", fiber.StatusInternalServerError)
+	}
+
 	h.logger.Info().
 		Str("session_id", sessionID).
 		Str("url", req.URL).

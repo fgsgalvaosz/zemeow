@@ -13,6 +13,13 @@ type WebhookRequest struct {
 	Retry   *WebhookRetryConfig    `json:"retry,omitempty"`
 }
 
+// WebhookConfigRequest representa uma solicitação de configuração de webhook
+type WebhookConfigRequest struct {
+	URL    string   `json:"url" validate:"required,url" example:"https://my-app.com/webhook"`
+	Events []string `json:"events" validate:"required,min=1" example:"message,receipt,presence"`
+	Active bool     `json:"active" example:"true"`
+}
+
 
 type WebhookRetryConfig struct {
 	MaxRetries    int   `json:"max_retries" validate:"min=0,max=10"`

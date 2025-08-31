@@ -569,6 +569,27 @@ definitions:
         example: https://meusite.com/webhook
         type: string
     type: object
+  dto.WebhookConfigRequest:
+    properties:
+      active:
+        example: true
+        type: boolean
+      events:
+        example:
+        - message
+        - receipt
+        - presence
+        items:
+          type: string
+        minItems: 1
+        type: array
+      url:
+        example: https://my-app.com/webhook
+        type: string
+    required:
+    - events
+    - url
+    type: object
   handlers.GenerateAPIKeyRequest:
     properties:
       session_id:
@@ -2442,7 +2463,7 @@ paths:
         name: webhook
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/dto.WebhookConfigRequest'
       produces:
       - application/json
       responses:

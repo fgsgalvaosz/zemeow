@@ -11,6 +11,7 @@ import (
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/message"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/mdp/qrterminal/v3"
@@ -21,31 +22,38 @@ import (
 )
 
 type WhatsAppManager struct {
-	mu          sync.RWMutex
-	clients     map[string]*MyClient
-	sessions    map[string]*models.Session
-	container   *sqlstore.Container
-	repository  repositories.SessionRepository
-	config      *config.Config
-	logger      logger.Logger
-	ctx         context.Context
-	cancel      context.CancelFunc
-	webhookChan chan WebhookEvent
+	mu                 sync.RWMutex
+	clients            map[string]*MyClient
+	sessions           map[string]*models.Session
+	container          *sqlstore.Container
+	repository         repositories.SessionRepository
+	messageRepo        repositories.MessageRepository
+	messagePersistence *message.PersistenceService
+	config             *config.Config
+	logger             logger.Logger
+	ctx                context.Context
+	cancel             context.CancelFunc
+	webhookChan        chan WebhookEvent
 }
 
-func NewWhatsAppManager(container *sqlstore.Container, repository repositories.SessionRepository, config *config.Config) *WhatsAppManager {
+func NewWhatsAppManager(container *sqlstore.Container, repository repositories.SessionRepository, messageRepo repositories.MessageRepository, config *config.Config) *WhatsAppManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Criar o serviço de persistência de mensagens
+	messagePersistence := message.NewPersistenceService(messageRepo)
+
 	return &WhatsAppManager{
-		clients:     make(map[string]*MyClient),
-		sessions:    make(map[string]*models.Session),
-		container:   container,
-		repository:  repository,
-		config:      config,
-		logger:      logger.GetWithSession("whatsapp_manager"),
-		ctx:         ctx,
-		cancel:      cancel,
-		webhookChan: make(chan WebhookEvent, 100),
+		clients:            make(map[string]*MyClient),
+		sessions:           make(map[string]*models.Session),
+		container:          container,
+		repository:         repository,
+		messageRepo:        messageRepo,
+		messagePersistence: messagePersistence,
+		config:             config,
+		logger:             logger.GetWithSession("whatsapp_manager"),
+		ctx:                ctx,
+		cancel:             cancel,
+		webhookChan:        make(chan WebhookEvent, 100),
 	}
 }
 
@@ -116,7 +124,7 @@ func (m *WhatsAppManager) initializeSession(session *models.Session) error {
 		m.logger.Info().Str("session_id", sessionID).Msg("Creating new device for session without JID")
 	}
 
-	client := NewMyClient(sessionID, deviceStore, m.webhookChan)
+	client := NewMyClient(sessionID, session.ID, deviceStore, m.webhookChan, m.messagePersistence)
 	client.SetOnPairSuccess(m.onPairSuccess)
 	m.registerClientHandlers(client, sessionID)
 

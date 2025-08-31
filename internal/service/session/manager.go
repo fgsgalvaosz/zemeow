@@ -28,10 +28,10 @@ type Manager struct {
 	cancel      context.CancelFunc
 }
 
-func NewManager(container *sqlstore.Container, repository repositories.SessionRepository, config *config.Config) *Manager {
+func NewManager(container *sqlstore.Container, repository repositories.SessionRepository, messageRepo repositories.MessageRepository, config *config.Config) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	whatsappMgr := meow.NewWhatsAppManager(container, repository, config)
+	whatsappMgr := meow.NewWhatsAppManager(container, repository, messageRepo, config)
 
 	cache := NewSessionCache(1*time.Hour, 15*time.Minute)
 

@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/felipe/zemeow/internal/api"
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/db"
@@ -108,8 +109,11 @@ func main() {
 
 	sessionRepo := repositories.NewSessionRepository(dbConn.DB)
 
+	// Criar instância sqlx.DB a partir da sql.DB existente
+	sqlxDB := sqlx.NewDb(dbConn.DB, "postgres")
+	messageRepo := repositories.NewMessageRepository(sqlxDB)
 
-	sessionManager := session.NewManager(sqlStore, sessionRepo, cfg)
+	sessionManager := session.NewManager(sqlStore, sessionRepo, messageRepo, cfg)
 
 
 	if err := sessionManager.Start(); err != nil {

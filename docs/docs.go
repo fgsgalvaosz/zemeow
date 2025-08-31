@@ -2846,7 +2846,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/dto.WebhookConfigRequest"
                         }
                     }
                 ],
@@ -3674,6 +3674,35 @@ const docTemplate = `{
                 "url": {
                     "type": "string",
                     "example": "https://meusite.com/webhook"
+                }
+            }
+        },
+        "dto.WebhookConfigRequest": {
+            "type": "object",
+            "required": [
+                "events",
+                "url"
+            ],
+            "properties": {
+                "active": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "events": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "message",
+                        "receipt",
+                        "presence"
+                    ]
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://my-app.com/webhook"
                 }
             }
         },

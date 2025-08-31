@@ -6,8 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/message"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -44,12 +46,16 @@ type ConnectionInfo struct {
 type MyClient struct {
 	mu            sync.RWMutex
 	sessionID     string
+	sessionUUID   uuid.UUID
 	client        *whatsmeow.Client
 	deviceStore   *store.Device
 	eventHandlers map[uint32]func(interface{})
 	isConnected   bool
 	logger        logger.Logger
 	webhookChan   chan<- WebhookEvent
+
+	// Serviços
+	messagePersistence *message.PersistenceService
 
 	onPairSuccess func(sessionID, jid string)
 
@@ -60,21 +66,22 @@ type MyClient struct {
 }
 
 
-func NewMyClient(sessionID string, deviceStore *store.Device, webhookChan chan<- WebhookEvent) *MyClient {
+func NewMyClient(sessionID string, sessionUUID uuid.UUID, deviceStore *store.Device, webhookChan chan<- WebhookEvent, messagePersistence *message.PersistenceService) *MyClient {
 	clientLogger := logger.GetWhatsAppLogger(sessionID)
 
 	client := whatsmeow.NewClient(deviceStore, clientLogger)
 
 	myClient := &MyClient{
-		sessionID:     sessionID,
-		client:        client,
-		deviceStore:   deviceStore,
-		eventHandlers: make(map[uint32]func(interface{})),
-		logger:        logger.GetWithSession(sessionID),
-		webhookChan:   webhookChan,
-		lastActivity:  time.Now(),
+		sessionID:          sessionID,
+		sessionUUID:        sessionUUID,
+		client:             client,
+		deviceStore:        deviceStore,
+		eventHandlers:      make(map[uint32]func(interface{})),
+		logger:             logger.GetWithSession(sessionID),
+		webhookChan:        webhookChan,
+		messagePersistence: messagePersistence,
+		lastActivity:       time.Now(),
 	}
-
 
 	myClient.setupDefaultEventHandlers()
 
@@ -142,6 +149,14 @@ func (c *MyClient) handleEvent(evt interface{}) {
 
 		c.logger.Info().Str("from", v.Info.Sender.String()).Msg("Received message")
 
+		// Persistir mensagem no banco de dados
+		if c.messagePersistence != nil {
+			err := c.messagePersistence.ProcessMessageEvent(c.sessionUUID, v)
+			if err != nil {
+				c.logger.Error().Err(err).Str("message_id", v.Info.ID).Msg("Failed to persist message")
+			}
+		}
+
 		c.sendWebhookEvent("message", map[string]interface{}{
 			"session_id": c.sessionID,
 			"message_id": v.Info.ID,
@@ -197,6 +212,15 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		})
 	case *events.Receipt:
 		c.logger.Debug().Str("message_id", v.MessageIDs[0]).Str("type", string(v.Type)).Msg("Message receipt")
+
+		// Processar confirmação de leitura/entrega
+		if c.messagePersistence != nil {
+			err := c.messagePersistence.ProcessReceiptEvent(c.sessionUUID, v)
+			if err != nil {
+				c.logger.Error().Err(err).Msg("Failed to process receipt event")
+			}
+		}
+
 		c.sendWebhookEvent("receipt", map[string]interface{}{
 			"session_id":  c.sessionID,
 			"message_ids": v.MessageIDs,

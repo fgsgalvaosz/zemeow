@@ -47,6 +47,25 @@ services:
     profiles:
       - admin
 
+  # Webhook Tester para testar webhooks do ZeMeow
+  webhook-tester:
+    image: tarampampam/webhook-tester:latest
+    container_name: zemeow_webhook_tester
+    restart: unless-stopped
+    environment:
+      - LISTEN_ADDR=0.0.0.0
+      - LISTEN_PORT=8080
+      - MAX_REQUESTS_PER_SESSION=1000
+      - SESSION_TTL=24h
+      - STORAGE_DRIVER=memory
+      - CREATE_SESSION=true
+    ports:
+      - "${WEBHOOK_TESTER_PORT:-8090}:8080"
+    networks:
+      - zemeow_network
+    profiles:
+      - webhook-test
+
 volumes:
   postgres_data:
     driver: local
