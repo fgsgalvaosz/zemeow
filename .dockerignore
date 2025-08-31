@@ -1,64 +1,120 @@
-# Git
+# Git e controle de versão
 .git
 .gitignore
 .gitattributes
+.gitmodules
 
-# Documentation
+# Documentação
 README.md
-docs/*.md
+docs/
 *.md
+LICENSE
+CHANGELOG.md
 
-# Development files
+# Arquivos de desenvolvimento
+.env*
+!.env.example
+config.local.*
 .env.example
-.env.local
-.env.development
-.env.test
 
-# IDE
+# IDEs e editores
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.vim/
+.emacs.d/
 
-# OS
+# Sistema operacional
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Logs
+# Logs e dados temporários
 *.log
 logs/
-
-# Runtime data
 sessions/
 tmp/
 temp/
+cache/
+*.tmp
+*.temp
 
-# Dependencies
+# Dependências e módulos
 node_modules/
+vendor/
+.npm/
+.yarn/
 
-# Build artifacts
+# Artefatos de build
 bin/
 dist/
 build/
+target/
+out/
 
-# Test files
+# Arquivos de teste
 *_test.go
 test/
 tests/
+coverage/
+*.test
+*.cover
+*.out
 
-# Docker
+# Docker e containerização
 Dockerfile*
 docker-compose*.yml
 .dockerignore
+.docker/
 
 # CI/CD
 .github/
 .gitlab-ci.yml
 .travis.yml
+.circleci/
+.jenkins/
+Jenkinsfile
 
-# Makefile
+# Ferramentas de build
 Makefile
+makefile
+*.mk
 
-# Reference/legacy code
+# Código de referência/legacy
 ref/
+
+# Arquivos de backup
+*.bak
+*.backup
+*.old
+
+# Certificados e chaves (segurança)
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+auth/
+
+# Dados de aplicação
+files/
+media/
+uploads/
+qrcodes/
+data/
+
+# Banco de dados local
+*.db
+*.sqlite
+*.sqlite3
+
+# Profiling e debugging
+*.prof
+*.pprof
+debug/
+
+# Arquivos específicos do Go
+go.sum.bak

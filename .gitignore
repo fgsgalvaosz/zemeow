@@ -82,3 +82,70 @@ docs/generated/
 
 # Arquivos de referência
 ref/
+
+# Makefile de produção (comandos sensíveis)
+Makefile
+makefile
+
+# Arquivos de configuração de produção
+config.yaml
+config.yml
+config.json
+config.toml
+docker-compose.override.yml
+docker-compose.prod.yml
+
+# Dados de sessão e cache
+sessions/
+cache/
+tmp/
+
+# Arquivos de monitoramento
+*.pid
+*.sock
+
+# Arquivos de deployment
+deploy/
+deployment/
+k8s/
+kubernetes/
+
+# Arquivos de segurança
+secrets/
+.secrets
+auth/
+tokens/
+
+# Arquivos de profiling
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+
+# Arquivos de Docker locais
+docker-compose.override.yml
+.dockerignore.local
+
+# Arquivos de CI/CD locais
+.github/workflows/local*
+.gitlab-ci.local.yml
+
+# Arquivos de teste de carga
+*.jmx
+load-test/
+stress-test/
+
+# Arquivos de backup de banco
+*.sql.gz
+*.dump
+backup/
+
+# Arquivos de métricas
+metrics/
+prometheus/
+grafana/
+
+# Arquivos de desenvolvimento local
+dev/
+development/
+local/
