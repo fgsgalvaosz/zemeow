@@ -14,6 +14,7 @@ import (
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/session"
+	"github.com/felipe/zemeow/internal/service/webhook"
 )
 
 
@@ -30,6 +31,7 @@ func NewServer(
 	sessionRepo repositories.SessionRepository,
 	sessionService interface{},
 	authService interface{},
+	webhookService *webhook.WebhookService,
 ) *Server {
 
 	app := fiber.New(fiber.Config{
@@ -56,7 +58,7 @@ func NewServer(
 
 	sessionHandler := handlers.NewSessionHandler(sessionService.(session.Service), sessionRepo)
 	messageHandler := handlers.NewMessageHandler(sessionService.(session.Service))
-	webhookHandler := handlers.NewWebhookHandler()
+	webhookHandler := handlers.NewWebhookHandler(webhookService)
 	groupHandler := handlers.NewGroupHandler(sessionService.(session.Service))
 
 

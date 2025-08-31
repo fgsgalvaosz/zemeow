@@ -527,34 +527,20 @@ func (r *Router) setupWebhookRoutes() {
 
 	webhooks := r.app.Group("/webhooks", r.authMiddleware.RequireGlobalAPIKey())
 
-
-
-
-	webhooks.Post("/send",
-		r.validationMiddleware.ValidateJSON(&dto.WebhookRequest{}),
-		r.webhookHandler.SendWebhook,
-	)
-
-
-	webhooks.Get("/stats", r.webhookHandler.GetWebhookStats)
-
-
-
-
-	webhooks.Post("/start", r.webhookHandler.StartWebhookService)
-
-
-	webhooks.Post("/stop", r.webhookHandler.StopWebhookService)
-
-
-	webhooks.Get("/status", r.webhookHandler.GetWebhookServiceStatus)
-
-
-
-
-	webhooks.Get("/sessions/:sessionId/stats",
+	// Find webhooks configured for a session
+	webhooks.Get("/sessions/:sessionId/find",
 		r.validationMiddleware.ValidateParams(),
 		r.validationMiddleware.ValidateSessionAccess(),
-		r.webhookHandler.GetSessionWebhookStats,
+		r.webhookHandler.FindWebhook,
 	)
+
+	// Set/configure webhook for a session
+	webhooks.Post("/sessions/:sessionId/set",
+		r.validationMiddleware.ValidateParams(),
+		r.validationMiddleware.ValidateSessionAccess(),
+		r.webhookHandler.SetWebhook,
+	)
+
+	// Get list of all available webhook events
+	webhooks.Get("/events", r.webhookHandler.GetWebhookEvents)
 }

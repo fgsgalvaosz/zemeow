@@ -33,6 +33,7 @@ import (
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/session"
+	"github.com/felipe/zemeow/internal/service/webhook"
 )
 
 func main() {
@@ -119,8 +120,19 @@ func main() {
 
 	sessionService := session.NewService(sessionRepo, sessionManager)
 
+	// Inicializar webhook service
+	logger.Get().Info().Msg("Initializing webhook service...")
+	webhookService := webhook.NewWebhookService(sessionRepo, cfg)
 
-	server := api.NewServer(cfg, sessionRepo, sessionService, sqlStore)
+	// Conectar webhook service ao channel de eventos do WhatsApp manager
+	webhookEventChan := sessionManager.GetWebhookChannel()
+	webhookService.ProcessEvents(webhookEventChan)
+
+	// Iniciar webhook service
+	webhookService.Start()
+	logger.Get().Info().Msg("Webhook service started successfully")
+
+	server := api.NewServer(cfg, sessionRepo, sessionService, sqlStore, webhookService)
 
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,6 +161,9 @@ func main() {
 		logger.Get().Error().Err(err).Msg("Error stopping server")
 	}
 
+	// Parar webhook service
+	logger.Get().Info().Msg("Stopping webhook service...")
+	webhookService.Stop()
 
 	if err := sessionManager.Shutdown(ctx); err != nil {
 		logger.Get().Error().Err(err).Msg("Error shutting down session manager")

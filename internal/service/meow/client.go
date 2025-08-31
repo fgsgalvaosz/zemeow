@@ -195,6 +195,102 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"reason":     int(v.Reason),
 			"timestamp":  time.Now().Unix(),
 		})
+	case *events.Receipt:
+		c.logger.Debug().Str("message_id", v.MessageIDs[0]).Str("type", string(v.Type)).Msg("Message receipt")
+		c.sendWebhookEvent("receipt", map[string]interface{}{
+			"session_id":  c.sessionID,
+			"message_ids": v.MessageIDs,
+			"chat":        v.Chat.String(),
+			"sender":      v.Sender.String(),
+			"type":        string(v.Type),
+			"timestamp":   v.Timestamp.Unix(),
+		})
+	case *events.Presence:
+		c.logger.Debug().Str("from", v.From.String()).Msg("Presence update")
+		c.sendWebhookEvent("presence", map[string]interface{}{
+			"session_id": c.sessionID,
+			"from":       v.From.String(),
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.ChatPresence:
+		c.logger.Debug().Str("chat", v.Chat.String()).Str("state", string(v.State)).Msg("Chat presence")
+		c.sendWebhookEvent("chat_presence", map[string]interface{}{
+			"session_id": c.sessionID,
+			"chat":       v.Chat.String(),
+			"state":      string(v.State),
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.UndecryptableMessage:
+		c.logger.Warn().Str("from", v.Info.Sender.String()).Str("message_id", v.Info.ID).Msg("Undecryptable message")
+		c.sendWebhookEvent("undecryptable_message", map[string]interface{}{
+			"session_id": c.sessionID,
+			"message_id": v.Info.ID,
+			"from":       v.Info.Sender.String(),
+			"chat":       v.Info.Chat.String(),
+			"timestamp":  v.Info.Timestamp.Unix(),
+		})
+	case *events.GroupInfo:
+		c.logger.Info().Str("group", v.JID.String()).Msg("Group info updated")
+		c.sendWebhookEvent("group_info", map[string]interface{}{
+			"session_id": c.sessionID,
+			"group":      v.JID.String(),
+			"name":       v.Name,
+			"topic":      v.Topic,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.JoinedGroup:
+		c.logger.Info().Str("group", v.JID.String()).Msg("Joined group")
+		c.sendWebhookEvent("joined_group", map[string]interface{}{
+			"session_id": c.sessionID,
+			"group":      v.JID.String(),
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.Picture:
+		c.logger.Info().Str("jid", v.JID.String()).Msg("Profile picture updated")
+		c.sendWebhookEvent("picture", map[string]interface{}{
+			"session_id": c.sessionID,
+			"jid":        v.JID.String(),
+			"picture_id": v.PictureID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.CallOffer:
+		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call offer received")
+		c.sendWebhookEvent("call_offer", map[string]interface{}{
+			"session_id": c.sessionID,
+			"call_id":    v.BasicCallMeta.CallID,
+			"from":       v.BasicCallMeta.From.String(),
+			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
+		})
+	case *events.CallAccept:
+		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call accepted")
+		c.sendWebhookEvent("call_accept", map[string]interface{}{
+			"session_id": c.sessionID,
+			"call_id":    v.BasicCallMeta.CallID,
+			"from":       v.BasicCallMeta.From.String(),
+			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
+		})
+	case *events.CallTerminate:
+		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call terminated")
+		c.sendWebhookEvent("call_terminate", map[string]interface{}{
+			"session_id": c.sessionID,
+			"call_id":    v.BasicCallMeta.CallID,
+			"from":       v.BasicCallMeta.From.String(),
+			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
+			"reason":     v.Reason,
+		})
+	case *events.AppState:
+		c.logger.Debug().Msg("App state sync")
+		c.sendWebhookEvent("app_state", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.HistorySync:
+		c.logger.Info().Int("conversations", len(v.Data.Conversations)).Msg("History sync")
+		c.sendWebhookEvent("history_sync", map[string]interface{}{
+			"session_id":    c.sessionID,
+			"conversations": len(v.Data.Conversations),
+			"timestamp":     time.Now().Unix(),
+		})
 	// Outros eventos podem ser adicionados aqui conforme necessário
 	}
 }

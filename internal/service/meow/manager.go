@@ -455,6 +455,11 @@ func (m *WhatsAppManager) registerClientHandlers(client *MyClient, sessionName s
 
 }
 
+// GetWebhookChannel returns the webhook event channel for connecting to webhook service
+func (m *WhatsAppManager) GetWebhookChannel() <-chan WebhookEvent {
+	return m.webhookChan
+}
+
 
 
 func (m *WhatsAppManager) handleQREvents(sessionName string, qrChan <-chan whatsmeow.QRChannelItem, client *MyClient) {

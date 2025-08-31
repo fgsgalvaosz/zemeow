@@ -249,6 +249,11 @@ func (m *Manager) EmitLifecycleEvent(sessionID string, eventType LifecycleEventT
 	m.lifecycle.EmitEvent(sessionID, eventType, data)
 }
 
+// GetWebhookChannel returns the webhook event channel from WhatsApp manager
+func (m *Manager) GetWebhookChannel() <-chan meow.WebhookEvent {
+	return m.whatsappMgr.GetWebhookChannel()
+}
+
 func (m *Manager) registerLifecycleHandlers() {
 
 	m.lifecycle.RegisterHandler(EventSessionCreated, func(event LifecycleEvent) error {

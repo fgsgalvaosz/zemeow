@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/rand"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felipe/zemeow/internal/config"
@@ -25,18 +28,23 @@ type WebhookService struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	queue      chan WebhookPayload
+	retryQueue chan WebhookPayload
 	workers    int
+	stats      WebhookServiceStats
 }
 
 
 type WebhookPayload struct {
-	SessionID string                 `json:"session_id"`
-	Event     string                 `json:"event"`
-	Data      interface{}            `json:"data,omitempty"`
-	Timestamp time.Time              `json:"timestamp"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Retries   int                    `json:"-"`
-	URL       string                 `json:"-"`
+	SessionID    string                 `json:"session_id"`
+	Event        string                 `json:"event"`
+	Data         interface{}            `json:"data,omitempty"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Retries      int                    `json:"-"`
+	URL          string                 `json:"-"`
+	NextRetryAt  time.Time              `json:"-"`
+	LastError    string                 `json:"-"`
+	CreatedAt    time.Time              `json:"-"`
 }
 
 
@@ -56,10 +64,27 @@ type WebhookStats struct {
 	ActiveWorkers int   `json:"active_workers"`
 }
 
+// WebhookServiceStats mantém estatísticas thread-safe do serviço
+type WebhookServiceStats struct {
+	TotalSent    int64
+	TotalSuccess int64
+	TotalFailed  int64
+	TotalRetries int64
+}
+
+// RetryStrategy define a estratégia de retry
+type RetryStrategy struct {
+	MaxRetries      int
+	BaseDelay       time.Duration
+	MaxDelay        time.Duration
+	BackoffFactor   float64
+	JitterEnabled   bool
+}
+
 
 func NewWebhookService(repository repositories.SessionRepository, config *config.Config) *WebhookService {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &WebhookService{
 		client: &http.Client{
 			Timeout: config.Webhook.Timeout,
@@ -75,29 +100,35 @@ func NewWebhookService(repository repositories.SessionRepository, config *config
 		ctx:        ctx,
 		cancel:     cancel,
 		queue:      make(chan WebhookPayload, 10000), // Buffer grande para evitar bloqueios
+		retryQueue: make(chan WebhookPayload, 5000),  // Buffer para retries
 		workers:    5, // Número de workers para processar webhooks
+		stats:      WebhookServiceStats{},
 	}
 }
 
 
 func (s *WebhookService) Start() {
 	s.logger.Info().Int("workers", s.workers).Msg("Starting webhook service")
-	
+
 
 	for i := 0; i < s.workers; i++ {
 		go s.worker(i)
 	}
-	
+
+	// Iniciar worker dedicado para retry
+	go s.retryWorker()
+
 	s.logger.Info().Msg("Webhook service started")
 }
 
 
 func (s *WebhookService) Stop() {
 	s.logger.Info().Msg("Stopping webhook service")
-	
+
 	s.cancel()
 	close(s.queue)
-	
+	close(s.retryQueue)
+
 	s.logger.Info().Msg("Webhook service stopped")
 }
 
@@ -128,24 +159,31 @@ func (s *WebhookService) ProcessEvents(eventChan <-chan meow.WebhookEvent) {
 }
 
 
-func (s *WebhookService) SendWebhook(payload WebhookPayload) error {
-	select {
-	case s.queue <- payload:
-		return nil
-	default:
-		return fmt.Errorf("webhook queue is full")
-	}
-}
-
-
 func (s *WebhookService) GetStats() WebhookStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
-	return WebhookStats{
 
+	return WebhookStats{
+		TotalSent:     atomic.LoadInt64(&s.stats.TotalSent),
+		TotalSuccess:  atomic.LoadInt64(&s.stats.TotalSuccess),
+		TotalFailed:   atomic.LoadInt64(&s.stats.TotalFailed),
+		TotalRetries:  atomic.LoadInt64(&s.stats.TotalRetries),
 		QueueSize:     len(s.queue),
 		ActiveWorkers: s.workers,
+	}
+}
+
+// SendWebhook envia um webhook manualmente
+func (s *WebhookService) SendWebhook(payload WebhookPayload) error {
+	select {
+	case s.queue <- payload:
+		s.logger.Debug().
+			Str("session_id", payload.SessionID).
+			Str("event", payload.Event).
+			Msg("Webhook queued manually")
+		return nil
+	default:
+		return fmt.Errorf("webhook queue is full")
 	}
 }
 
@@ -199,24 +237,39 @@ func (s *WebhookService) worker(id int) {
 			}
 			
 
-			if err := s.sendHTTPWebhook(payload); err != nil {
-				s.logger.Error().Err(err).Int("worker_id", id).Str("session_id", payload.SessionID).Msg("Failed to send webhook")
-				
+			atomic.AddInt64(&s.stats.TotalSent, 1)
 
+			if err := s.sendHTTPWebhook(payload); err != nil {
+				atomic.AddInt64(&s.stats.TotalFailed, 1)
+				s.logger.Error().Err(err).Int("worker_id", id).Str("session_id", payload.SessionID).Msg("Failed to send webhook")
+
+				// Implementar retry com backoff exponencial
 				if payload.Retries < s.config.Webhook.RetryCount {
 					payload.Retries++
-					
+					payload.LastError = err.Error()
+					payload.NextRetryAt = s.calculateNextRetry(payload.Retries)
+					atomic.AddInt64(&s.stats.TotalRetries, 1)
 
-					delay := time.Duration(payload.Retries*payload.Retries) * time.Second
-					time.Sleep(delay)
-					
-
+					// Enviar para fila de retry
 					select {
-					case s.queue <- payload:
+					case s.retryQueue <- payload:
+						s.logger.Debug().
+							Str("session_id", payload.SessionID).
+							Int("retry", payload.Retries).
+							Time("next_retry", payload.NextRetryAt).
+							Msg("Webhook queued for retry")
 					default:
-						s.logger.Warn().Str("session_id", payload.SessionID).Msg("Failed to requeue webhook, queue full")
+						s.logger.Warn().Str("session_id", payload.SessionID).Msg("Failed to queue webhook for retry, retry queue full")
 					}
+				} else {
+					s.logger.Error().
+						Str("session_id", payload.SessionID).
+						Str("event", payload.Event).
+						Int("retries", payload.Retries).
+						Msg("Webhook failed permanently after all retries")
 				}
+			} else {
+				atomic.AddInt64(&s.stats.TotalSuccess, 1)
 			}
 			
 		case <-s.ctx.Done():
@@ -226,6 +279,75 @@ func (s *WebhookService) worker(id int) {
 	}
 }
 
+// retryWorker processa webhooks que falharam e precisam ser reenviados
+func (s *WebhookService) retryWorker() {
+	s.logger.Debug().Msg("Starting retry worker")
+
+	ticker := time.NewTicker(1 * time.Second) // Verificar retries a cada segundo
+	defer ticker.Stop()
+
+	var pendingRetries []WebhookPayload
+
+	for {
+		select {
+		case payload := <-s.retryQueue:
+			// Adicionar à lista de retries pendentes
+			pendingRetries = append(pendingRetries, payload)
+			s.logger.Debug().
+				Str("session_id", payload.SessionID).
+				Int("pending_retries", len(pendingRetries)).
+				Msg("Added webhook to retry queue")
+
+		case <-ticker.C:
+			// Processar retries que estão prontos
+			now := time.Now()
+			var stillPending []WebhookPayload
+
+			for _, payload := range pendingRetries {
+				if now.After(payload.NextRetryAt) {
+					// Hora de tentar novamente
+					select {
+					case s.queue <- payload:
+						s.logger.Debug().
+							Str("session_id", payload.SessionID).
+							Int("retry", payload.Retries).
+							Msg("Webhook moved from retry queue to main queue")
+					default:
+						// Se a fila principal está cheia, manter na fila de retry
+						stillPending = append(stillPending, payload)
+					}
+				} else {
+					// Ainda não é hora de tentar novamente
+					stillPending = append(stillPending, payload)
+				}
+			}
+
+			pendingRetries = stillPending
+
+		case <-s.ctx.Done():
+			s.logger.Debug().Msg("Retry worker stopped by context")
+			return
+		}
+	}
+}
+
+// calculateNextRetry calcula o próximo momento para retry com backoff exponencial
+func (s *WebhookService) calculateNextRetry(retryCount int) time.Time {
+	// Backoff exponencial: 2^retry * base_delay
+	baseDelay := 2 * time.Second
+	maxDelay := 60 * time.Second
+
+	delay := time.Duration(math.Pow(2, float64(retryCount))) * baseDelay
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+
+	// Adicionar jitter (±25% de variação)
+	jitter := time.Duration(float64(delay) * 0.25 * (2*rand.Float64() - 1))
+	delay += jitter
+
+	return time.Now().Add(delay)
+}
 
 func (s *WebhookService) sendHTTPWebhook(payload WebhookPayload) error {
 

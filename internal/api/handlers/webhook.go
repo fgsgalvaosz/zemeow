@@ -1,151 +1,174 @@
 package handlers
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/felipe/zemeow/internal/api/middleware"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/service/webhook"
 )
 
-
+// WebhookHandler gerencia operações relacionadas a webhooks
 type WebhookHandler struct {
-	logger logger.Logger
+	logger         logger.Logger
+	webhookService *webhook.WebhookService
 }
 
-
-func NewWebhookHandler() *WebhookHandler {
+// NewWebhookHandler cria uma nova instância do WebhookHandler
+func NewWebhookHandler(webhookService *webhook.WebhookService) *WebhookHandler {
 	return &WebhookHandler{
-		logger: logger.GetWithSession("webhook_handler"),
+		logger:         logger.GetWithSession("webhook_handler"),
+		webhookService: webhookService,
 	}
 }
 
-
-// @Summary Enviar webhook manualmente
-// @Description Envia um webhook manualmente para teste
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param request body map[string]interface{} true "Payload do webhook"
-// @Success 200 {object} map[string]interface{} "Webhook enviado com sucesso"
-// @Failure 400 {object} map[string]interface{} "Dados inválidos"
-// @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Router /webhooks/send [post]
-func (h *WebhookHandler) SendWebhook(c *fiber.Ctx) error {
-
-	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil || !authCtx.IsGlobalKey {
-		return h.sendError(c, "Global access required", "GLOBAL_ACCESS_REQUIRED", fiber.StatusForbidden)
+// FindWebhook busca webhooks configurados para uma sessão
+func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	
+	// Verificar acesso à sessão
+	if !h.hasSessionAccess(c, sessionID) {
+		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
 	}
+	
+	// TODO: Implementar busca de webhooks no banco de dados
+	// Por enquanto, retornamos uma resposta mock
+	return c.JSON(fiber.Map{
+		"session_id": sessionID,
+		"webhooks": []map[string]interface{}{
+			{
+				"id":         1,
+				"url":        "https://example.com/webhook",
+				"events":     []string{"message", "receipt", "presence"},
+				"active":     true,
+				"created_at": time.Now().Add(-24 * time.Hour).Unix(),
+				"updated_at": time.Now().Unix(),
+			},
+		},
+		"total":     1,
+		"timestamp": time.Now().Unix(),
+	})
+}
 
-	var req map[string]interface{}
+// SetWebhook configura um webhook para uma sessão
+func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
+	sessionID := c.Params("sessionId")
+	
+	// Verificar acesso à sessão
+	if !h.hasSessionAccess(c, sessionID) {
+		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
+	}
+	
+	var req struct {
+		URL    string   `json:"url" validate:"required,url"`
+		Events []string `json:"events" validate:"required,min=1"`
+		Active bool     `json:"active"`
+	}
+	
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
-
+	
+	// Validar eventos
+	validEvents := h.getValidEvents()
+	for _, event := range req.Events {
+		if !h.isValidEvent(event, validEvents) {
+			return h.sendError(c, fmt.Sprintf("Invalid event: %s", event), "INVALID_EVENT", fiber.StatusBadRequest)
+		}
+	}
+	
+	// TODO: Salvar webhook no banco de dados
+	// Por enquanto, retornamos uma resposta de sucesso
+	h.logger.Info().
+		Str("session_id", sessionID).
+		Str("url", req.URL).
+		Strs("events", req.Events).
+		Bool("active", req.Active).
+		Msg("Webhook configured successfully")
+	
 	return c.JSON(fiber.Map{
-		"status":  "sent",
-		"message": "Webhook endpoint (mock)",
-		"payload": req,
+		"status":     "configured",
+		"message":    "Webhook configured successfully",
+		"session_id": sessionID,
+		"webhook": map[string]interface{}{
+			"id":         time.Now().Unix(), // ID temporário
+			"url":        req.URL,
+			"events":     req.Events,
+			"active":     req.Active,
+			"created_at": time.Now().Unix(),
+		},
+		"timestamp": time.Now().Unix(),
 	})
 }
 
-
-// @Summary Obter estatísticas de webhooks
-// @Description Retorna estatísticas globais de webhooks enviados
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{} "Estatísticas de webhooks"
-// @Router /webhooks/stats [get]
-func (h *WebhookHandler) GetWebhookStats(c *fiber.Ctx) error {
+// GetWebhookEvents retorna lista completa de eventos disponíveis
+func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
+	events := h.getValidEvents()
+	
 	return c.JSON(fiber.Map{
-		"total_sent":   0,
-		"total_failed": 0,
-		"message":      "Webhook stats endpoint",
+		"events": events,
+		"total":  len(events),
+		"categories": map[string][]string{
+			"connection": {"connected", "disconnected", "connect_failure", "reconnect"},
+			"messages":   {"message", "receipt", "undecryptable_message"},
+			"presence":   {"presence", "chat_presence"},
+			"groups":     {"group_info", "joined_group"},
+			"calls":      {"call_offer", "call_accept", "call_terminate"},
+			"media":      {"picture"},
+			"system":     {"app_state", "history_sync"},
+		},
+		"timestamp": time.Now().Unix(),
 	})
 }
 
-
-
-// @Summary Obter estatísticas de webhooks da sessão
-// @Description Retorna estatísticas de webhooks específicas de uma sessão
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param sessionId path string true "ID da sessão"
-// @Success 200 {object} map[string]interface{} "Estatísticas de webhooks da sessão"
-// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
-// @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Router /webhooks/sessions/{sessionId}/stats [get]
-func (h *WebhookHandler) GetSessionWebhookStats(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
-	return c.JSON(fiber.Map{
-		"session_id":   sessionID,
-		"total_sent":   0,
-		"total_failed": 0,
-		"message":      "Session webhook stats endpoint",
-	})
+// getValidEvents retorna lista de todos os eventos válidos
+func (h *WebhookHandler) getValidEvents() []map[string]interface{} {
+	return []map[string]interface{}{
+		// Connection events
+		{"name": "connected", "category": "connection", "description": "WhatsApp connection established"},
+		{"name": "disconnected", "category": "connection", "description": "WhatsApp connection lost"},
+		{"name": "connect_failure", "category": "connection", "description": "Failed to connect to WhatsApp"},
+		{"name": "reconnect", "category": "connection", "description": "Reconnection attempt"},
+		
+		// Message events
+		{"name": "message", "category": "messages", "description": "New message received"},
+		{"name": "receipt", "category": "messages", "description": "Message delivery receipt"},
+		{"name": "undecryptable_message", "category": "messages", "description": "Message could not be decrypted"},
+		
+		// Presence events
+		{"name": "presence", "category": "presence", "description": "User presence status change"},
+		{"name": "chat_presence", "category": "presence", "description": "Chat typing status"},
+		
+		// Group events
+		{"name": "group_info", "category": "groups", "description": "Group information updated"},
+		{"name": "joined_group", "category": "groups", "description": "Joined a new group"},
+		
+		// Call events
+		{"name": "call_offer", "category": "calls", "description": "Incoming call offer"},
+		{"name": "call_accept", "category": "calls", "description": "Call accepted"},
+		{"name": "call_terminate", "category": "calls", "description": "Call terminated"},
+		
+		// Media events
+		{"name": "picture", "category": "media", "description": "Profile picture updated"},
+		
+		// System events
+		{"name": "app_state", "category": "system", "description": "App state synchronization"},
+		{"name": "history_sync", "category": "system", "description": "Message history synchronization"},
+	}
 }
 
-
-
-// @Summary Iniciar serviço de webhooks
-// @Description Inicia o serviço global de processamento de webhooks
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{} "Serviço iniciado com sucesso"
-// @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /webhooks/start [post]
-func (h *WebhookHandler) StartWebhookService(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status":  "started",
-		"message": "Webhook service start endpoint",
-	})
+// isValidEvent verifica se um evento é válido
+func (h *WebhookHandler) isValidEvent(event string, validEvents []map[string]interface{}) bool {
+	for _, validEvent := range validEvents {
+		if validEvent["name"].(string) == event {
+			return true
+		}
+	}
+	return false
 }
-
-
-
-// @Summary Parar serviço de webhooks
-// @Description Para o serviço global de processamento de webhooks
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{} "Serviço parado com sucesso"
-// @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /webhooks/stop [post]
-func (h *WebhookHandler) StopWebhookService(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status":  "stopped",
-		"message": "Webhook service stop endpoint",
-	})
-}
-
-
-
-// @Summary Obter status do serviço de webhooks
-// @Description Retorna o status atual do serviço global de webhooks
-// @Tags webhooks
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{} "Status do serviço de webhooks"
-// @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Router /webhooks/status [get]
-func (h *WebhookHandler) GetWebhookServiceStatus(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"running": true,
-		"message": "Webhook service status endpoint",
-	})
-}
-
 
 func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 	authCtx := middleware.GetAuthContext(c)
@@ -153,22 +176,19 @@ func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
 		return false
 	}
 
-
+	// Acesso global sempre permitido
 	if authCtx.IsGlobalKey {
 		return true
 	}
 
-
+	// Verificar se o usuário tem acesso à sessão específica
 	return authCtx.SessionID == sessionID
 }
 
-
 func (h *WebhookHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	errorResp := fiber.Map{
+	return c.Status(status).JSON(fiber.Map{
 		"error":   code,
 		"message": message,
 		"code":    status,
-	}
-
-	return c.Status(status).JSON(errorResp)
+	})
 }
