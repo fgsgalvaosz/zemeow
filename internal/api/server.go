@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -135,28 +136,61 @@ func (s *Server) GetApp() *fiber.App {
 }
 
 func configureSwagger(cfg *config.Config) {
-
+	// Get the configured host from environment or config
 	host := cfg.Server.Host
-	if host == "0.0.0.0" || host == "" {
 
-		host = "localhost"
+	// Check if we have a custom domain configured via environment
+	customDomain := os.Getenv("SERVER_HOST")
+	if customDomain == "0.0.0.0" || customDomain == "" {
+		customDomain = ""
 	}
 
-	scheme := "http"
-	if cfg.IsProduction() || strings.Contains(host, ".com") || strings.Contains(host, ".br") {
+	// Determine the actual host for Swagger
+	var swaggerHost string
+	var scheme string
+
+	if customDomain != "" && customDomain != "localhost" {
+		// Use custom domain (production)
+		swaggerHost = customDomain
 		scheme = "https"
+		if strings.Contains(customDomain, "localhost") || strings.Contains(customDomain, "127.0.0.1") {
+			scheme = "http"
+		}
+	} else if cfg.IsProduction() {
+		// Production without custom domain - try to detect from config
+		if strings.Contains(host, ".com") || strings.Contains(host, ".br") || strings.Contains(host, ".net") || strings.Contains(host, ".org") {
+			swaggerHost = host
+			scheme = "https"
+		} else {
+			// Fallback for production - use a placeholder
+			swaggerHost = "api.yourdomain.com"
+			scheme = "https"
+		}
+	} else {
+		// Development mode
+		if host == "0.0.0.0" || host == "" {
+			host = "localhost"
+		}
+		swaggerHost = fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+		scheme = "http"
 	}
 
-	swaggerHost := host
-	if !cfg.IsProduction() && host == "localhost" {
-		swaggerHost = fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+	// Set both schemes to support both HTTP and HTTPS
+	schemes := []string{scheme}
+	if scheme == "https" {
+		schemes = []string{"https", "http"} // Prefer HTTPS but allow HTTP
+	} else {
+		schemes = []string{"http", "https"} // Prefer HTTP but allow HTTPS
 	}
 
 	docs.SwaggerInfo.Host = swaggerHost
-	docs.SwaggerInfo.Schemes = []string{scheme}
+	docs.SwaggerInfo.Schemes = schemes
 
 	logger.Get().Info().
 		Str("swagger_host", swaggerHost).
-		Str("swagger_scheme", scheme).
+		Strs("swagger_schemes", schemes).
+		Str("config_host", cfg.Server.Host).
+		Str("env_server_host", os.Getenv("SERVER_HOST")).
+		Bool("is_production", cfg.IsProduction()).
 		Msg("Swagger configured dynamically")
 }

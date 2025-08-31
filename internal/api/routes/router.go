@@ -50,6 +50,8 @@ func (r *Router) SetupRoutes() {
 
 	r.setupSwaggerRoutes()
 
+	r.setupWebRoutes()
+
 	r.setupHealthRoutes()
 
 	r.setupSessionRoutes()
@@ -71,5 +73,18 @@ func (r *Router) setupSwaggerRoutes() {
 
 	r.app.Get("/swagger", func(c *fiber.Ctx) error {
 		return c.Redirect("/swagger/index.html", 301)
+	})
+}
+
+func (r *Router) setupWebRoutes() {
+	// Serve static files from web directory with proper routing
+	r.app.Static("/web", "./web", fiber.Static{
+		Browse: false,
+		Index:  "index.html",
+	})
+
+	// Redirect /web to /web/
+	r.app.Get("/web", func(c *fiber.Ctx) error {
+		return c.Redirect("/web/", 301)
 	})
 }

@@ -11,9 +11,9 @@ services:
     container_name: zemeow_postgres_dev
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
-      - POSTGRES_USER=${POSTGRES_USER:-zemeow}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zemeow123}
+      - POSTGRES_DB=${POSTGRES_DB:-your_database_name}
+      - POSTGRES_USER=${POSTGRES_USER:-your_db_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_secure_password}
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -22,7 +22,7 @@ services:
     networks:
       - zemeow_dev_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zemeow} -d ${POSTGRES_DB:-zemeow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-your_db_user} -d ${POSTGRES_DB:-your_database_name}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,8 +34,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-Gacont}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-your_minio_user}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-your_minio_password}
       - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL:-http://127.0.0.1:9001}
       - MINIO_SERVER_URL=${MINIO_SERVER_URL:-http://127.0.0.1:9000}
       - MINIO_BROWSER=on
@@ -64,7 +64,7 @@ services:
       - zemeow_dev_network
     entrypoint: >
       /bin/sh -c "
-      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-Gacont} ${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd};
+      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-your_minio_user} ${MINIO_ROOT_PASSWORD:-your_minio_password};
       mc mb minio/zemeow-media --ignore-existing;
       mc anonymous set public minio/zemeow-media;
       echo 'MinIO configurado com sucesso!';
@@ -75,9 +75,9 @@ services:
     image: redis:7-alpine
     container_name: zemeow_redis_dev
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-your_redis_password}
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-your_redis_password}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -114,8 +114,8 @@ services:
       - CONNECTIONS=con1
       - LABEL_con1=ZeMeow PostgreSQL Dev
       - SERVER_con1=postgres
-      - USER_con1=${POSTGRES_USER:-zemeow}
-      - PASSWORD_con1=${POSTGRES_PASSWORD:-zemeow123}
+      - USER_con1=${POSTGRES_USER:-your_db_user}
+      - PASSWORD_con1=${POSTGRES_PASSWORD:-your_secure_password}
       - PORT_con1=5432
       - ENGINE_con1=postgres@dbgate-plugin-postgres
     ports:

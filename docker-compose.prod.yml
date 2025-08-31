@@ -1,41 +1,98 @@
-version: "3.7"
+version: "3.8"
 
-# Docker Compose para Produção com Traefik
-# Stack completa para deploy no Portainer com Traefik
-# Substitua os domínios pelos seus domínios reais
+# ========================================
+# ZEMEOW WHATSAPP API - PRODUÇÃO
+# ========================================
+# Stack completa para deploy no Portainer
+# 
+# 🔧 CONFIGURAÇÃO NECESSÁRIA:
+# 1. Altere os domínios para seus domínios reais
+# 2. Altere as senhas para valores seguros
+# 3. Configure a rede externa 'Gacont' no Portainer
+# 4. Deploy como Stack no Portainer
+#
+# 📋 DOMÍNIOS CONFIGURADOS:
+# - API: zemeow.gacont.com.br
+# - S3: zs3.gacont.com.br  
+# - MinIO Console: zminio.gacont.com.br
+# ========================================
 
 services:
 
-## --------------------------- ZEMEOW API --------------------------- ##
-
+  # ========================================
+  # ZEMEOW API
+  # ========================================
   zemeow:
-    image: felipyfgs17/zemeow:v1.2.0
+    image: felipyfgs17/zemeow:latest
+    restart: unless-stopped
     
     environment:
-      # Banco de dados - usando nomes corretos que o código espera
+      # ========================================
+      # CONFIGURAÇÕES DO BANCO DE DADOS
+      # ========================================
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=zemeow
       - POSTGRES_USER=zemeow
-      - POSTGRES_PASSWORD=zemeow123
+      - POSTGRES_PASSWORD=ZeMeow@2024!Secure#DB
       - POSTGRES_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=100
+      - DATABASE_MAX_IDLE_CONNS=25
+      - DATABASE_CONN_MAX_LIFETIME=30m
+      - DATABASE_CONN_MAX_IDLE_TIME=10m
       
-      # Redis
+      # ========================================
+      # CONFIGURAÇÕES DO SERVIDOR
+      # ========================================
+      - SERVER_HOST=zemeow.gacont.com.br
+      - SERVER_PORT=8080
+      - ENVIRONMENT=production
+      - SERVER_READ_TIMEOUT=60s
+      - SERVER_WRITE_TIMEOUT=60s
+      - SERVER_IDLE_TIMEOUT=120s
+      
+      # ========================================
+      # AUTENTICAÇÃO
+      # ========================================
+      - ADMIN_API_KEY=zmw_prod_2024_gacont_secure_api_key_br
+      
+      # ========================================
+      # WHATSAPP
+      # ========================================
+      - WHATSAPP_TIMEOUT=60s
+      - WHATSAPP_RECONNECT_INTERVAL=10s
+      - QR_CODE_TIMEOUT=300s
+      
+      # ========================================
+      # LOGGING
+      # ========================================
+      - LOG_LEVEL=warn
+      - LOG_PRETTY=false
+      
+      # ========================================
+      # WEBHOOKS
+      # ========================================
+      - WEBHOOK_TIMEOUT=30s
+      - WEBHOOK_RETRY_COUNT=5
+      - WEBHOOK_RETRY_INTERVAL=10s
+      
+      # ========================================
+      # REDIS
+      # ========================================
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=redis123
+      - REDIS_PASSWORD=Redis@ZeMeow2024!Secure#Cache
       
-      # MinIO
+      # ========================================
+      # MINIO (ARMAZENAMENTO)
+      # ========================================
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=Gacont
-      - MINIO_SECRET_KEY=WIPcLhjcBoslmOd
+      - MINIO_ACCESS_KEY=ZeMeowMinIO2024
+      - MINIO_SECRET_KEY=ZeMeow@MinIO2024!Secure#Storage
       - MINIO_USE_SSL=false
       - MINIO_BUCKET_NAME=zemeow-media
-      
-      # API
-      - ADMIN_API_KEY=test123
-      - SERVER_PORT=8080
-      - SERVER_HOST=zemeow.gacont.com.br
+      - MINIO_REGION=us-east-1
+      - MINIO_PUBLIC_URL=https://zs3.gacont.com.br
 
     volumes:
       - zemeow_sessions:/app/sessions
@@ -49,92 +106,120 @@ services:
       - redis
       - minio
 
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.zemeow_api.rule=Host(`zemeow.gacont.com.br`)
-        - traefik.http.routers.zemeow_api.entrypoints=websecure
-        - traefik.http.routers.zemeow_api.tls.certresolver=letsencryptresolver
-        - traefik.http.services.zemeow_api.loadbalancer.server.port=8080
-        - traefik.http.services.zemeow_api.loadbalancer.passHostHeader=true
-        - traefik.http.routers.zemeow_api.service=zemeow_api
+    labels:
+      # Traefik
+      - traefik.enable=true
+      - traefik.docker.network=Gacont
+      
+      # HTTP Router
+      - traefik.http.routers.zemeow_api.rule=Host(`zemeow.gacont.com.br`)
+      - traefik.http.routers.zemeow_api.entrypoints=websecure
+      - traefik.http.routers.zemeow_api.tls.certresolver=letsencryptresolver
+      - traefik.http.services.zemeow_api.loadbalancer.server.port=8080
+      - traefik.http.services.zemeow_api.loadbalancer.passHostHeader=true
+      - traefik.http.routers.zemeow_api.service=zemeow_api
 
-## --------------------------- POSTGRESQL --------------------------- ##
-
+  # ========================================
+  # POSTGRESQL DATABASE
+  # ========================================
   postgres:
     image: postgres:15-alpine
+    restart: unless-stopped
     
     environment:
       - POSTGRES_DB=zemeow
       - POSTGRES_USER=zemeow
-      - POSTGRES_PASSWORD=zemeow123
+      - POSTGRES_PASSWORD=ZeMeow@2024!Secure#DB
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+      - PGDATA=/var/lib/postgresql/data/pgdata
 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - zemeow_postgres_data:/var/lib/postgresql/data
 
     networks:
       - Gacont
-
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zemeow -d zemeow"]
-      interval: 5s
-      timeout: 3s
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 30s
 
-## --------------------------- REDIS --------------------------- ##
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
 
+  # ========================================
+  # REDIS CACHE
+  # ========================================
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes --requirepass redis123
+    restart: unless-stopped
+    
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass Redis@ZeMeow2024!Secure#Cache
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
     
     environment:
-      - REDIS_PASSWORD=redis123
+      - REDIS_PASSWORD=Redis@ZeMeow2024!Secure#Cache
 
     volumes:
-      - redis_data:/data
+      - zemeow_redis_data:/data
 
     networks:
       - Gacont
 
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-## --------------------------- MINIO --------------------------- ##
-
+  # ========================================
+  # MINIO S3 STORAGE
+  # ========================================
   minio:
     image: quay.io/minio/minio:RELEASE.2024-01-13T07-53-03Z-cpuv1
-    command: server /data --console-address ":9001"
+    command: >
+      sh -c "
+      minio server /data --console-address ':9001' &
+      sleep 10 &&
+      mc alias set local http://localhost:9000 ZeMeowMinIO2024 ZeMeow@MinIO2024!Secure#Storage &&
+      mc mb local/zemeow-media --ignore-existing &&
+      mc policy set public local/zemeow-media &&
+      mc admin info local &&
+      echo 'MinIO setup completed successfully' &&
+      wait
+      "
 
     volumes:
-      - minio_data:/data
+      - zemeow_minio_data:/data
 
     networks:
       - Gacont
 
     environment:
-      # Dados de acesso
-      - MINIO_ROOT_USER=Gacont
-      - MINIO_ROOT_PASSWORD=WIPcLhjcBoslmOd
-      
-      # URLs do MinIO
+      - MINIO_ROOT_USER=ZeMeowMinIO2024
+      - MINIO_ROOT_PASSWORD=ZeMeow@MinIO2024!Secure#Storage
       - MINIO_BROWSER_REDIRECT_URL=https://zminio.gacont.com.br
       - MINIO_SERVER_URL=https://zs3.gacont.com.br
 
@@ -147,12 +232,12 @@ services:
       labels:
         - traefik.enable=true
         # S3 API
-        - traefik.http.routers.minio_s3.rule=Host(`zs3.gacont.com.br`)
-        - traefik.http.routers.minio_s3.entrypoints=websecure
-        - traefik.http.routers.minio_s3.tls.certresolver=letsencryptresolver
-        - traefik.http.services.minio_s3.loadbalancer.server.port=9000
-        - traefik.http.services.minio_s3.loadbalancer.passHostHeader=true
-        - traefik.http.routers.minio_s3.service=minio_s3
+        - traefik.http.routers.minio_public.rule=Host(`zs3.gacont.com.br`)
+        - traefik.http.routers.minio_public.entrypoints=websecure
+        - traefik.http.routers.minio_public.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio_public.loadbalancer.server.port=9000
+        - traefik.http.services.minio_public.loadbalancer.passHostHeader=true
+        - traefik.http.routers.minio_public.service=minio_public
         # Console
         - traefik.http.routers.minio_console.rule=Host(`zminio.gacont.com.br`)
         - traefik.http.routers.minio_console.entrypoints=websecure
@@ -161,56 +246,24 @@ services:
         - traefik.http.services.minio_console.loadbalancer.passHostHeader=true
         - traefik.http.routers.minio_console.service=minio_console
 
-## --------------------------- MINIO CLIENT --------------------------- ##
-
-  minio-client:
-    image: minio/mc:latest
-    depends_on:
-      - minio
-    networks:
-      - Gacont
-    entrypoint: >
-      /bin/sh -c "
-      sleep 10;
-      mc alias set minio http://minio:9000 Gacont WIPcLhjcBoslmOd;
-      mc mb minio/zemeow-media --ignore-existing;
-      mc anonymous set public minio/zemeow-media;
-      echo 'MinIO configurado com sucesso!';
-      "
-    deploy:
-      mode: replicated
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 10s
-        max_attempts: 3
-
-## --------------------------- VOLUMES --------------------------- ##
-
+# ========================================
+# VOLUMES
+# ========================================
 volumes:
-  postgres_data:
-    external: true
-    name: zemeow_postgres_data
-  
-  redis_data:
-    external: true
-    name: zemeow_redis_data
-  
-  minio_data:
-    external: true
-    name: zemeow_minio_data
-  
   zemeow_sessions:
     external: true
-    name: zemeow_sessions_data
-  
   zemeow_logs:
     external: true
-    name: zemeow_logs_data
+  zemeow_postgres_data:
+    external: true
+  zemeow_redis_data:
+    external: true
+  zemeow_minio_data:
+    external: true
 
-## --------------------------- NETWORKS --------------------------- ##
-
+# ========================================
+# NETWORKS
+# ========================================
 networks:
   Gacont:
     external: true
-    name: Gacont

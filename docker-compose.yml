@@ -7,34 +7,32 @@ version: '3.8'
 services:
   # ZeMeow API - Aplicação principal
   zemeow:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: zemeow-zemeow:latest
     container_name: zemeow_api
     restart: unless-stopped
     environment:
       # Database - usando nomes corretos que o código espera
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
-      - POSTGRES_USER=${POSTGRES_USER:-zemeow}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zemeow123}
+      - POSTGRES_DB=${POSTGRES_DB:-your_database_name}
+      - POSTGRES_USER=${POSTGRES_USER:-your_db_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_secure_password}
       - POSTGRES_SSLMODE=disable
 
       # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-your_redis_password}
 
       # MinIO
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-Gacont}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-your_minio_user}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-your_minio_password}
       - MINIO_USE_SSL=false
-      - MINIO_BUCKET_NAME=zemeow-media
+      - MINIO_BUCKET_NAME=your-media-bucket
 
       # API
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-test123}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-my-super-secret-api-key}
       - SERVER_PORT=8080
     ports:
       - "${API_PORT:-8080}:8080"
@@ -49,7 +47,7 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -62,9 +60,9 @@ services:
     container_name: zemeow_postgres_prod
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-zemeow}
-      POSTGRES_USER: ${POSTGRES_USER:-zemeow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zemeow123}
+      POSTGRES_DB: ${POSTGRES_DB:-your_database_name}
+      POSTGRES_USER: ${POSTGRES_USER:-your_db_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -74,7 +72,7 @@ services:
     networks:
       - zemeow_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zemeow} -d ${POSTGRES_DB:-zemeow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-your_db_user} -d ${POSTGRES_DB:-your_database_name}"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -89,8 +87,8 @@ services:
       CONNECTIONS: con1
       LABEL_con1: ZeMeow PostgreSQL
       SERVER_con1: postgres
-      USER_con1: ${POSTGRES_USER:-zemeow}
-      PASSWORD_con1: ${POSTGRES_PASSWORD:-zemeow123}
+      USER_con1: ${POSTGRES_USER:-your_db_user}
+      PASSWORD_con1: ${POSTGRES_PASSWORD:-your_secure_password}
       PORT_con1: 5432
       ENGINE_con1: postgres@dbgate-plugin-postgres
     ports:
@@ -107,9 +105,9 @@ services:
     image: redis:7-alpine
     container_name: zemeow_redis_prod
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-your_redis_password}
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-your_redis_password}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -129,8 +127,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-Gacont}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-WIPcLhjcBoslmOd}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-your_minio_user}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-your_minio_password}
       - MINIO_BROWSER_REDIRECT_URL=${MINIO_BROWSER_REDIRECT_URL:-http://127.0.0.1:9001}
       - MINIO_SERVER_URL=${MINIO_SERVER_URL:-http://127.0.0.1:9000}
       - MINIO_BROWSER=on
@@ -142,12 +140,31 @@ services:
       - minio_data:/data
     networks:
       - zemeow_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-      start_period: 30s
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    #   interval: 30s
+    #   timeout: 20s
+    #   retries: 3
+    #   start_period: 30s
+
+  # Cliente MinIO para configuração inicial
+  minio-client:
+    image: minio/mc:latest
+    container_name: zemeow_minio_client_dev
+    restart: "no"
+    depends_on:
+      - minio
+    networks:
+      - zemeow_network
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10;
+      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-your_minio_user} ${MINIO_ROOT_PASSWORD:-your_minio_password};
+      mc mb minio/your-media-bucket --ignore-existing;
+      mc policy set public minio/your-media-bucket;
+      mc admin info minio;
+      echo 'MinIO setup completed successfully';
+      "
 
 volumes:
   postgres_data:

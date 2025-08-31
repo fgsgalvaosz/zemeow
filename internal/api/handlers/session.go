@@ -64,7 +64,8 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 	}
 
 	if req.SessionID == "" {
-		req.SessionID = "session_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		// Generate alphanumeric session ID
+		req.SessionID = "session" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
 
 	var proxyConfig *session.ProxyConfig
