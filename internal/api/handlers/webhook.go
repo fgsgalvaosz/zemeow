@@ -53,13 +53,19 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	webhooks := []map[string]interface{}{}
 
 	if session.WebhookURL != nil && *session.WebhookURL != "" {
+		payloadMode := "processed" // padrão
+		if session.WebhookPayloadMode != nil {
+			payloadMode = *session.WebhookPayloadMode
+		}
+
 		webhooks = append(webhooks, map[string]interface{}{
-			"id":         1,
-			"url":        *session.WebhookURL,
-			"events":     []string(session.WebhookEvents),
-			"active":     true,
-			"created_at": session.CreatedAt.Unix(),
-			"updated_at": session.UpdatedAt.Unix(),
+			"id":           1,
+			"url":          *session.WebhookURL,
+			"events":       []string(session.WebhookEvents),
+			"payload_mode": payloadMode,
+			"active":       true,
+			"created_at":   session.CreatedAt.Unix(),
+			"updated_at":   session.UpdatedAt.Unix(),
 		})
 	}
 
@@ -72,7 +78,11 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 }
 
 // @Summary Configurar webhook
-// @Description Configura um novo webhook para uma sessão específica
+// @Description Configura um novo webhook para uma sessão específica com suporte a payload bruto
+// @Description Modos de payload disponíveis:
+// @Description - "processed": Payload processado e simplificado (padrão)
+// @Description - "raw": Payload bruto da whatsmeow sem transformações
+// @Description - "both": Ambos os formatos enviados separadamente
 // @Tags webhooks
 // @Accept json
 // @Produce json
@@ -111,9 +121,16 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	if req.Active {
 		session.WebhookURL = &req.URL
 		session.WebhookEvents = pq.StringArray(req.Events)
+		// Configurar PayloadMode (padrão: "processed")
+		payloadMode := req.PayloadMode
+		if payloadMode == "" {
+			payloadMode = "processed"
+		}
+		session.WebhookPayloadMode = &payloadMode
 	} else {
 		session.WebhookURL = nil
 		session.WebhookEvents = nil
+		session.WebhookPayloadMode = nil
 	}
 
 	if err := h.sessionRepo.Update(session); err != nil {
@@ -125,19 +142,26 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 		Str("session_id", sessionID).
 		Str("url", req.URL).
 		Strs("events", req.Events).
+		Str("payload_mode", req.PayloadMode).
 		Bool("active", req.Active).
 		Msg("Webhook configured successfully")
+
+	payloadMode := req.PayloadMode
+	if payloadMode == "" {
+		payloadMode = "processed"
+	}
 
 	return c.JSON(fiber.Map{
 		"status":     "configured",
 		"message":    "Webhook configured successfully",
 		"session_id": sessionID,
 		"webhook": map[string]interface{}{
-			"id":         time.Now().Unix(),
-			"url":        req.URL,
-			"events":     req.Events,
-			"active":     req.Active,
-			"created_at": time.Now().Unix(),
+			"id":           time.Now().Unix(),
+			"url":          req.URL,
+			"events":       req.Events,
+			"payload_mode": payloadMode,
+			"active":       req.Active,
+			"created_at":   time.Now().Unix(),
 		},
 		"timestamp": time.Now().Unix(),
 	})
@@ -145,11 +169,12 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 
 // @Summary Listar eventos de webhook
 // @Description Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria
+// @Description Inclui informações sobre os diferentes modos de payload suportados
 // @Tags webhooks
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Success 200 {object} map[string]interface{} "Lista de eventos disponíveis"
+// @Success 200 {object} map[string]interface{} "Lista de eventos disponíveis e modos de payload"
 // @Router /webhooks/events [get]
 func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
 	events := h.getValidEvents()
@@ -165,6 +190,23 @@ func (h *WebhookHandler) GetWebhookEvents(c *fiber.Ctx) error {
 			"calls":      {"call_offer", "call_accept", "call_terminate"},
 			"media":      {"picture"},
 			"system":     {"app_state", "history_sync"},
+		},
+		"payload_modes": map[string]interface{}{
+			"processed": map[string]interface{}{
+				"description": "Payload processado e simplificado (padrão)",
+				"format":      "Estrutura customizada com campos principais",
+				"size":        "Menor",
+			},
+			"raw": map[string]interface{}{
+				"description": "Payload bruto da whatsmeow sem transformações",
+				"format":      "Estrutura original da biblioteca whatsmeow",
+				"size":        "Maior",
+			},
+			"both": map[string]interface{}{
+				"description": "Ambos os formatos enviados separadamente",
+				"format":      "Dois webhooks: um processado e um bruto",
+				"size":        "Máximo",
+			},
 		},
 		"timestamp": time.Now().Unix(),
 	})

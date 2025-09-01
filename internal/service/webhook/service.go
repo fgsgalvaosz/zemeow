@@ -8,11 +8,13 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/felipe/zemeow/internal/config"
+	"github.com/felipe/zemeow/internal/db/models"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/meow"
@@ -43,6 +45,30 @@ type WebhookPayload struct {
 	NextRetryAt time.Time              `json:"-"`
 	LastError   string                 `json:"-"`
 	CreatedAt   time.Time              `json:"-"`
+}
+
+// RawWebhookPayload estrutura para payloads brutos da whatsmeow
+type RawWebhookPayload struct {
+	SessionID    string          `json:"session_id"`
+	EventType    string          `json:"event_type"`
+	RawData      json.RawMessage `json:"raw_data"`
+	EventMeta    EventMetadata   `json:"event_meta"`
+	Timestamp    time.Time       `json:"timestamp"`
+	PayloadType  string          `json:"payload_type"` // "raw" | "processed"
+	Retries      int             `json:"-"`
+	URL          string          `json:"-"`
+	NextRetryAt  time.Time       `json:"-"`
+	LastError    string          `json:"-"`
+	CreatedAt    time.Time       `json:"-"`
+}
+
+// EventMetadata metadados do evento para contexto adicional
+type EventMetadata struct {
+	WhatsmeowVersion string `json:"whatsmeow_version,omitempty"`
+	ProtocolVersion  string `json:"protocol_version,omitempty"`
+	SessionJID       string `json:"session_jid,omitempty"`
+	DeviceInfo       string `json:"device_info,omitempty"`
+	GoVersion        string `json:"go_version,omitempty"`
 }
 
 type WebhookResponse struct {
@@ -173,7 +199,6 @@ func (s *WebhookService) SendWebhook(payload WebhookPayload) error {
 }
 
 func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
-
 	session, err := s.repository.GetByIdentifier(event.SessionID)
 	if err != nil {
 		return fmt.Errorf("failed to get session: %w", err)
@@ -189,19 +214,30 @@ func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
 		return nil
 	}
 
-	payload := WebhookPayload{
-		SessionID: event.SessionID,
-		Event:     event.Event,
-		Data:      event.Data,
-		Timestamp: event.Timestamp,
-		URL:       *session.WebhookURL,
-		Metadata: map[string]interface{}{
-			"session_name": session.Name,
-			"jid":          session.JID,
-		},
+	// Determinar modo de payload (padrão: processed)
+	payloadMode := "processed"
+	if session.WebhookPayloadMode != nil && *session.WebhookPayloadMode != "" {
+		payloadMode = *session.WebhookPayloadMode
 	}
 
-	return s.SendWebhook(payload)
+	// Processar conforme o modo configurado
+	switch payloadMode {
+	case "processed":
+		return s.processEventProcessed(event, session)
+	case "raw":
+		return s.processEventRaw(event, session)
+	case "both":
+		// Enviar ambos os formatos
+		err1 := s.processEventProcessed(event, session)
+		err2 := s.processEventRaw(event, session)
+		if err1 != nil {
+			return err1
+		}
+		return err2
+	default:
+		// Fallback para modo processado
+		return s.processEventProcessed(event, session)
+	}
 }
 
 func (s *WebhookService) worker(id int) {
@@ -339,6 +375,11 @@ func (s *WebhookService) sendHTTPWebhook(payload WebhookPayload) error {
 	req.Header.Set("X-Webhook-Event", payload.Event)
 	req.Header.Set("X-Session-ID", payload.SessionID)
 
+	// Add webhook secret if configured
+	if s.config.Webhook.Secret != "" {
+		req.Header.Set("X-Webhook-Secret", s.config.Webhook.Secret)
+	}
+
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -394,4 +435,146 @@ func (s *WebhookService) TestWebhook(url string, sessionID string) error {
 	}
 
 	return s.sendHTTPWebhook(testPayload)
+}
+
+// processEventProcessed processa evento no formato processado (atual)
+func (s *WebhookService) processEventProcessed(event meow.WebhookEvent, session *models.Session) error {
+	payload := WebhookPayload{
+		SessionID: event.SessionID,
+		Event:     event.Event,
+		Data:      event.Data,
+		Timestamp: event.Timestamp,
+		URL:       *session.WebhookURL,
+		Metadata: map[string]interface{}{
+			"session_name": session.Name,
+			"jid":          session.JID,
+			"payload_type": "processed",
+		},
+	}
+
+	return s.SendWebhook(payload)
+}
+
+// processEventRaw processa evento no formato bruto da whatsmeow
+func (s *WebhookService) processEventRaw(event meow.WebhookEvent, session *models.Session) error {
+	// Verificar se há dados brutos disponíveis
+	if event.RawEventData == nil {
+		s.logger.Warn().Str("session_id", event.SessionID).Str("event", event.Event).Msg("No raw event data available")
+		return nil
+	}
+
+	// Serializar dados brutos
+	rawBytes, err := json.Marshal(event.RawEventData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal raw event data: %w", err)
+	}
+
+	// Criar metadados do evento
+	eventMeta := s.createEventMetadata(session)
+
+	// Criar payload bruto
+	rawPayload := RawWebhookPayload{
+		SessionID:   event.SessionID,
+		EventType:   event.EventType,
+		RawData:     json.RawMessage(rawBytes),
+		EventMeta:   eventMeta,
+		Timestamp:   event.Timestamp,
+		PayloadType: "raw",
+		URL:         *session.WebhookURL,
+	}
+
+	return s.SendRawWebhook(rawPayload)
+}
+
+// createEventMetadata cria metadados do evento
+func (s *WebhookService) createEventMetadata(session *models.Session) EventMetadata {
+	var sessionJID string
+	if session.JID != nil {
+		sessionJID = *session.JID
+	}
+
+	return EventMetadata{
+		WhatsmeowVersion: "v0.0.0-20250611130243", // Versão da whatsmeow
+		ProtocolVersion:  "2.24.6",                 // Versão do protocolo
+		SessionJID:       sessionJID,
+		DeviceInfo:       "ZeMeow/1.0",
+		GoVersion:        runtime.Version(),
+	}
+}
+
+// SendRawWebhook envia webhook com payload bruto
+func (s *WebhookService) SendRawWebhook(payload RawWebhookPayload) error {
+	// Converter para interface comum para usar a fila existente
+	genericPayload := WebhookPayload{
+		SessionID: payload.SessionID,
+		Event:     payload.EventType,
+		Data:      payload, // O payload completo como data
+		Timestamp: payload.Timestamp,
+		URL:       payload.URL,
+		Metadata: map[string]interface{}{
+			"payload_type": "raw",
+			"event_type":   payload.EventType,
+		},
+	}
+
+	select {
+	case s.queue <- genericPayload:
+		s.logger.Debug().
+			Str("session_id", payload.SessionID).
+			Str("event_type", payload.EventType).
+			Msg("Raw webhook queued")
+		return nil
+	default:
+		return fmt.Errorf("webhook queue is full")
+	}
+}
+
+// sendHTTPRawWebhook envia webhook bruto via HTTP
+func (s *WebhookService) sendHTTPRawWebhook(payload RawWebhookPayload) error {
+	// Serializar payload bruto
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal raw payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(s.ctx, "POST", payload.URL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "ZeMeow-Webhook/1.0")
+	req.Header.Set("X-Webhook-Event", payload.EventType)
+	req.Header.Set("X-Session-ID", payload.SessionID)
+	req.Header.Set("X-Payload-Type", "raw")
+	req.Header.Set("X-Event-Type", payload.EventType)
+
+	// Add webhook secret if configured
+	if s.config.Webhook.Secret != "" {
+		req.Header.Set("X-Webhook-Secret", s.config.Webhook.Secret)
+	}
+
+	start := time.Now()
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	duration := time.Since(start)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+	}
+
+	s.logger.Info().
+		Str("session_id", payload.SessionID).
+		Str("event_type", payload.EventType).
+		Str("url", payload.URL).
+		Int("status", resp.StatusCode).
+		Dur("duration", duration).
+		Int("retries", payload.Retries).
+		Msg("Raw webhook sent successfully")
+
+	return nil
 }

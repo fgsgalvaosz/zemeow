@@ -11,9 +11,10 @@ type WebhookRequest struct {
 }
 
 type WebhookConfigRequest struct {
-	URL    string   `json:"url" validate:"required,url" example:"https://example.com/webhook"`
-	Events []string `json:"events" validate:"required,min=1" example:"message,receipt,presence"`
-	Active bool     `json:"active" example:"true"`
+	URL         string   `json:"url" validate:"required,url" example:"https://example.com/webhook"`
+	Events      []string `json:"events" validate:"required,min=1" example:"message,receipt,presence"`
+	Active      bool     `json:"active" example:"true"`
+	PayloadMode string   `json:"payload_mode" validate:"omitempty,oneof=processed raw both" example:"processed"` // Modo do payload: "processed" | "raw" | "both"
 }
 
 type WebhookRetryConfig struct {

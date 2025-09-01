@@ -47,7 +47,7 @@ func NewWhatsAppManager(container *sqlstore.Container, repository repositories.S
 	var mediaService *media.MediaService
 	if config.MinIO.Endpoint != "" {
 		var err error
-		mediaService, err = media.NewMediaService(&config.MinIO)
+		mediaService, err = media.NewMediaServiceFromConfig(&config.MinIO)
 		if err != nil {
 			logger.Get().Warn().Err(err).Msg("Failed to initialize MediaService, media storage will be disabled")
 			mediaService = nil

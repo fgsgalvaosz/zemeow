@@ -64,7 +64,7 @@ func NewServer(
 	var mediaService *media.MediaService
 	if cfg.MinIO.Endpoint != "" {
 		var err error
-		mediaService, err = media.NewMediaService(&cfg.MinIO)
+		mediaService, err = media.NewMediaServiceFromConfig(&cfg.MinIO)
 		if err != nil {
 			logger.Get().Warn().Err(err).Msg("Failed to initialize MediaService, media routes will be disabled")
 			mediaService = nil

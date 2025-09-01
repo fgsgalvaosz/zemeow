@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -528,18 +529,34 @@ func (s *PersistenceService) processMediaContent(sessionID uuid.UUID, evt *event
 		direction = "outgoing"
 	}
 
-	uploadReq := &media.MediaUploadRequest{
-		SessionID:   sessionID.String(),
-		MessageID:   evt.Info.ID,
-		FileName:    mediaData.FileName,
-		ContentType: mediaData.MimeType,
-		Data:        mediaData.Data,
-		Direction:   direction,
-		ChatJID:     evt.Info.Chat.String(),
-		SenderJID:   evt.Info.Sender.String(),
+	mediaPath := fmt.Sprintf("media/%s/%s/%s", direction, sessionID.String(), evt.Info.ID)
+	if mediaData.FileName != "" {
+		mediaPath = fmt.Sprintf("%s/%s", mediaPath, mediaData.FileName)
 	}
 
-	mediaInfo, err := s.mediaService.UploadMedia(context.Background(), uploadReq)
+	err = s.mediaService.UploadMedia(
+		context.Background(),
+		mediaPath,
+		bytes.NewReader(mediaData.Data),
+		int64(len(mediaData.Data)),
+		mediaData.MimeType,
+	)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("message_id", evt.Info.ID).
+			Str("session_id", sessionID.String()).
+			Msg("Failed to upload media to MinIO")
+		return
+	}
+
+	mediaURL, err := s.mediaService.GetMediaURL(context.Background(), mediaPath)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("message_id", evt.Info.ID).
+			Str("session_id", sessionID.String()).
+			Msg("Failed to get media URL from MinIO")
+		return
+	}
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("message_id", evt.Info.ID).
@@ -550,15 +567,15 @@ func (s *PersistenceService) processMediaContent(sessionID uuid.UUID, evt *event
 
 	err = s.messageRepo.UpdateMinIOReferences(
 		message.ID,
-		mediaInfo.ID,
-		mediaInfo.Path,
-		mediaInfo.URL,
+		"",
+		mediaPath,
+		mediaURL,
 		"zemeow-media",
 	)
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("message_id", evt.Info.ID).
-			Str("media_id", mediaInfo.ID).
+			Str("minio_path", mediaPath).
 			Msg("Failed to update MinIO references in database")
 		return
 	}
@@ -566,9 +583,8 @@ func (s *PersistenceService) processMediaContent(sessionID uuid.UUID, evt *event
 	s.logger.Info().
 		Str("message_id", evt.Info.ID).
 		Str("session_id", sessionID.String()).
-		Str("media_id", mediaInfo.ID).
-		Str("minio_path", mediaInfo.Path).
-		Int64("size", mediaInfo.Size).
+		Str("minio_path", mediaPath).
+		Int64("size", int64(len(mediaData.Data))).
 		Str("direction", direction).
 		Msg("Media processed and saved to MinIO successfully")
 }

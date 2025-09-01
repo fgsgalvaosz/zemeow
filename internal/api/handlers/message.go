@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -115,18 +116,18 @@ func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, conten
 		return nil, nil
 	}
 
-	uploadReq := &media.MediaUploadRequest{
-		SessionID:   sessionID,
-		MessageID:   messageID,
-		FileName:    fileName,
-		ContentType: contentType,
-		Data:        data,
-		Direction:   direction,
-		ChatJID:     chatJID,
-		SenderJID:   senderJID,
+	mediaPath := fmt.Sprintf("media/%s/%s/%s", direction, sessionID, messageID)
+	if fileName != "" {
+		mediaPath = fmt.Sprintf("%s/%s", mediaPath, fileName)
 	}
 
-	mediaInfo, err := h.mediaService.UploadMedia(context.Background(), uploadReq)
+	err := h.mediaService.UploadMedia(
+		context.Background(),
+		mediaPath,
+		bytes.NewReader(data),
+		int64(len(data)),
+		contentType,
+	)
 	if err != nil {
 		h.logger.Error().Err(err).
 			Str("session_id", sessionID).
@@ -136,15 +137,30 @@ func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, conten
 		return nil, err
 	}
 
+	mediaURL, err := h.mediaService.GetMediaURL(context.Background(), mediaPath)
+	if err != nil {
+		h.logger.Error().Err(err).
+			Str("session_id", sessionID).
+			Str("message_id", messageID).
+			Str("file_name", fileName).
+			Msg("Failed to generate media URL")
+		return nil, err
+	}
+
 	h.logger.Info().
 		Str("session_id", sessionID).
 		Str("message_id", messageID).
-		Str("media_id", mediaInfo.ID).
-		Str("minio_path", mediaInfo.Path).
-		Int64("size", mediaInfo.Size).
+		Str("minio_path", mediaPath).
+		Int64("size", int64(len(data))).
 		Msg("Media uploaded to MinIO successfully")
 
-	return mediaInfo, nil
+	return &media.MediaInfo{
+		FileName:    fileName,
+		ContentType: contentType,
+		Size:        int64(len(data)),
+		Path:        mediaPath,
+		URL:         mediaURL,
+	}, nil
 }
 
 // @Summary Enviar mídia

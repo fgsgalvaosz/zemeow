@@ -133,12 +133,6 @@ func (db *DB) OptimizeForWhatsApp() error {
 		"SET idle_in_transaction_session_timeout = '60s'",
 
 		"SET log_min_duration_statement = 1000",
-		"SET log_checkpoints = on",
-		"SET log_connections = on",
-		"SET log_disconnections = on",
-
-		"SET autovacuum_vacuum_scale_factor = 0.1",
-		"SET autovacuum_analyze_scale_factor = 0.05",
 	}
 
 	for _, query := range optimizations {

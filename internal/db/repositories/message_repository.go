@@ -62,17 +62,17 @@ func (r *messageRepository) Create(message *models.Message) error {
 
 	query := `
 		INSERT INTO messages (
-			id, session_id, message_id, whatsapp_message_id, chat_jid, sender_jid, recipient_jid,
+			id, session_id, message_id, whatsapp_message_id, chat_jid, from_jid, to_jid,
 			message_type, content, raw_message, media_url, media_type, media_size, media_filename,
 			media_sha256, media_key, caption, quoted_message_id, quoted_content, reply_to_message_id,
 			context_info, direction, status, is_from_me, is_ephemeral, is_view_once, is_forwarded,
 			is_edit, edit_version, mentions, reaction_emoji, reaction_timestamp, location_latitude,
 			location_longitude, location_name, location_address, contact_name, contact_phone,
-			contact_vcard, sticker_pack_id, sticker_pack_name, group_invite_code, 
+			contact_vcard, sticker_pack_id, sticker_pack_name, group_invite_code,
 			group_invite_expiration, poll_name, poll_options, poll_selectable_count,
 			error_message, retry_count, timestamp, created_at, updated_at
 		) VALUES (
-			:id, :session_id, :message_id, :whatsapp_message_id, :chat_jid, :sender_jid, :recipient_jid,
+			:id, :session_id, :message_id, :whatsapp_message_id, :chat_jid, :from_jid, :to_jid,
 			:message_type, :content, :raw_message, :media_url, :media_type, :media_size, :media_filename,
 			:media_sha256, :media_key, :caption, :quoted_message_id, :quoted_content, :reply_to_message_id,
 			:context_info, :direction, :status, :is_from_me, :is_ephemeral, :is_view_once, :is_forwarded,
@@ -132,8 +132,8 @@ func (r *messageRepository) Update(message *models.Message) error {
 
 	query := `
 		UPDATE messages SET
-			whatsapp_message_id = :whatsapp_message_id, chat_jid = :chat_jid, sender_jid = :sender_jid,
-			recipient_jid = :recipient_jid, message_type = :message_type, content = :content,
+			whatsapp_message_id = :whatsapp_message_id, chat_jid = :chat_jid, from_jid = :from_jid,
+			to_jid = :to_jid, message_type = :message_type, content = :content,
 			raw_message = :raw_message, media_url = :media_url, media_type = :media_type,
 			media_size = :media_size, media_filename = :media_filename, media_sha256 = :media_sha256,
 			media_key = :media_key, caption = :caption, quoted_message_id = :quoted_message_id,
@@ -654,7 +654,7 @@ func (r *messageRepository) GetSessionMediaMessages(sessionID string, page, limi
 	}
 
 	selectQuery := `
-		SELECT id, session_id, message_id, whatsapp_message_id, chat_jid, sender_jid, recipient_jid,
+		SELECT id, session_id, message_id, whatsapp_message_id, chat_jid, from_jid, to_jid,
 		       message_type, content, raw_message, media_url, media_type, media_size, media_filename,
 		       media_sha256, media_key, minio_media_id, minio_path, minio_url, minio_bucket,
 		       caption, direction, status, is_from_me, is_ephemeral, is_view_once, is_forwarded,

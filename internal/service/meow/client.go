@@ -17,10 +17,14 @@ import (
 )
 
 type WebhookEvent struct {
-	SessionID string      `json:"session_id"`
-	Event     string      `json:"event"`
-	Data      interface{} `json:"data"`
-	Timestamp time.Time   `json:"timestamp"`
+	SessionID    string      `json:"session_id"`
+	Event        string      `json:"event"`
+	Data         interface{} `json:"data"`
+	Timestamp    time.Time   `json:"timestamp"`
+	// Campos adicionais para suporte a payload bruto
+	RawEventData interface{} `json:"-"` // Dados originais do evento whatsmeow
+	PayloadMode  string      `json:"-"` // "processed" | "raw" | "both"
+	EventType    string      `json:"-"` // Tipo específico do evento (ex: "*events.Message")
 }
 
 type QRCodeData struct {
@@ -413,4 +417,135 @@ func (c *MyClient) Logout() error {
 	})
 
 	return nil
+}
+
+// sendWebhookEventRaw envia evento com payload bruto da whatsmeow
+func (c *MyClient) sendWebhookEventRaw(evt interface{}, eventType string) {
+	if c.webhookChan == nil {
+		return
+	}
+
+	webhookEvent := WebhookEvent{
+		SessionID:    c.sessionID,
+		Event:        eventType,
+		Data:         nil, // Data será nil para payload raw
+		Timestamp:    time.Now(),
+		RawEventData: evt,
+		PayloadMode:  "raw",
+		EventType:    c.getEventTypeName(evt),
+	}
+
+	select {
+	case c.webhookChan <- webhookEvent:
+		c.logger.Debug().Str("event", eventType).Str("event_type", webhookEvent.EventType).Msg("Raw webhook event sent")
+	default:
+		c.logger.Warn().Str("event", eventType).Msg("Webhook channel full, raw event dropped")
+	}
+}
+
+// getEventTypeName retorna o nome do tipo do evento para identificação
+func (c *MyClient) getEventTypeName(evt interface{}) string {
+	switch evt.(type) {
+	case *events.Message:
+		return "*events.Message"
+	case *events.Receipt:
+		return "*events.Receipt"
+	case *events.Connected:
+		return "*events.Connected"
+	case *events.Disconnected:
+		return "*events.Disconnected"
+	case *events.QR:
+		return "*events.QR"
+	case *events.PairSuccess:
+		return "*events.PairSuccess"
+	case *events.StreamError:
+		return "*events.StreamError"
+	case *events.ConnectFailure:
+		return "*events.ConnectFailure"
+	case *events.Presence:
+		return "*events.Presence"
+	case *events.ChatPresence:
+		return "*events.ChatPresence"
+	case *events.UndecryptableMessage:
+		return "*events.UndecryptableMessage"
+	case *events.GroupInfo:
+		return "*events.GroupInfo"
+	case *events.CallOffer:
+		return "*events.CallOffer"
+	case *events.CallAccept:
+		return "*events.CallAccept"
+	case *events.CallTerminate:
+		return "*events.CallTerminate"
+	case *events.AppState:
+		return "*events.AppState"
+	case *events.HistorySync:
+		return "*events.HistorySync"
+	default:
+		return fmt.Sprintf("%T", evt)
+	}
+}
+
+// handleEventWithMode lida com eventos considerando o modo de payload configurado
+func (c *MyClient) handleEventWithMode(evt interface{}, payloadMode string) {
+	// Obter nome do evento para uso nas funções existentes
+	eventName := c.getEventName(evt)
+	
+	// Processar conforme o modo configurado
+	switch payloadMode {
+	case "processed":
+		// Usar o handler existente (padrão)
+		c.handleEvent(evt)
+	case "raw":
+		// Enviar apenas payload bruto
+		c.sendWebhookEventRaw(evt, eventName)
+	case "both":
+		// Enviar ambos os formatos
+		c.handleEvent(evt)
+		c.sendWebhookEventRaw(evt, eventName)
+	default:
+		// Fallback para modo processado
+		c.handleEvent(evt)
+	}
+}
+
+// getEventName retorna o nome simplificado do evento para compatibilidade
+func (c *MyClient) getEventName(evt interface{}) string {
+	switch evt.(type) {
+	case *events.Message:
+		return "message"
+	case *events.Receipt:
+		return "receipt"
+	case *events.Connected:
+		return "connected"
+	case *events.Disconnected:
+		return "disconnected"
+	case *events.QR:
+		return "qr"
+	case *events.PairSuccess:
+		return "pair_success"
+	case *events.StreamError:
+		return "stream_error"
+	case *events.ConnectFailure:
+		return "connect_failure"
+	case *events.Presence:
+		return "presence"
+	case *events.ChatPresence:
+		return "chat_presence"
+	case *events.UndecryptableMessage:
+		return "undecryptable_message"
+	case *events.GroupInfo:
+		return "group_info"
+	case *events.CallOffer:
+		return "call_offer"
+	case *events.CallAccept:
+		return "call_accept"
+	case *events.CallTerminate:
+		return "call_terminate"
+	case *events.AppState:
+		return "app_state"
+	case *events.HistorySync:
+		return "history_sync"
+	default:
+		return "unknown"
+	}
 }

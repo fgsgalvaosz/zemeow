@@ -16,8 +16,8 @@ type Message struct {
 	WhatsAppMessageID *string   `json:"whatsapp_message_id" db:"whatsapp_message_id"`
 
 	ChatJID      string  `json:"chat_jid" db:"chat_jid"`
-	SenderJID    string  `json:"sender_jid" db:"sender_jid"`
-	RecipientJID *string `json:"recipient_jid" db:"recipient_jid"`
+	SenderJID    string  `json:"sender_jid" db:"from_jid"`
+	RecipientJID *string `json:"recipient_jid" db:"to_jid"`
 
 	MessageType string          `json:"message_type" db:"message_type"`
 	Content     *string         `json:"content" db:"content"`

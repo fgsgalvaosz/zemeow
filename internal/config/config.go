@@ -60,6 +60,8 @@ type LoggingConfig struct {
 }
 
 type WebhookConfig struct {
+	URL           string
+	Secret        string
 	Timeout       time.Duration
 	RetryCount    int
 	RetryInterval time.Duration
@@ -117,6 +119,8 @@ func Load() (*Config, error) {
 			Pretty: getEnvAsBool("LOG_PRETTY", true),
 		},
 		Webhook: WebhookConfig{
+			URL:           getEnv("WEBHOOK_URL", ""),
+			Secret:        getEnv("WEBHOOK_SECRET", ""),
 			Timeout:       getEnvAsDuration("WEBHOOK_TIMEOUT", 10*time.Second),
 			RetryCount:    getEnvAsInt("WEBHOOK_RETRY_COUNT", 3),
 			RetryInterval: getEnvAsDuration("WEBHOOK_RETRY_INTERVAL", 5*time.Second),
