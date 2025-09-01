@@ -51,12 +51,12 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 
 	validatedBody := c.Locals("validated_body")
 	if validatedBody == nil {
-		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
 	req, ok := validatedBody.(*dto.CreateSessionRequest)
 	if !ok {
-		return h.sendError(c, "Invalid request format", "INVALID_REQUEST", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request format", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
 	if req.Name == "" {
@@ -99,7 +99,7 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 	sessionInfo, err := h.sessionService.CreateSession(context.Background(), config)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to create session")
-		return h.sendError(c, "Failed to create session", "CREATE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to create session", "CREATE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -131,13 +131,13 @@ func (h *SessionHandler) CreateSession(c *fiber.Ctx) error {
 func (h *SessionHandler) GetSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	sessionInfo, err := h.sessionService.GetSession(context.Background(), sessionID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get session")
-		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
 	}
 
 	response := fiber.Map{
@@ -182,7 +182,7 @@ func (h *SessionHandler) ListSessions(c *fiber.Ctx) error {
 	sessions, err := h.sessionRepo.GetAll(&filter)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to list sessions")
-		return h.sendError(c, "Failed to list sessions", "LIST_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to list sessions", "LIST_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -204,17 +204,17 @@ func (h *SessionHandler) ListSessions(c *fiber.Ctx) error {
 func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	var req models.UpdateSessionRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
 	sessionModel, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
 	}
 
 	if req.Name != nil {
@@ -235,7 +235,7 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 
 	if err := h.sessionRepo.Update(sessionModel); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update session")
-		return h.sendError(c, "Failed to update session", "UPDATE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to update session", "UPDATE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -275,12 +275,12 @@ func (h *SessionHandler) UpdateSession(c *fiber.Ctx) error {
 func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	if err := h.sessionService.DeleteSession(context.Background(), sessionID); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to delete session")
-		return h.sendError(c, "Failed to delete session", "DELETE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to delete session", "DELETE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -305,12 +305,12 @@ func (h *SessionHandler) DeleteSession(c *fiber.Ctx) error {
 func (h *SessionHandler) ConnectSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	if err := h.sessionService.ConnectSession(context.Background(), sessionID); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to connect session")
-		return h.sendError(c, "Failed to connect session", "CONNECT_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to connect session", "CONNECT_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -336,12 +336,12 @@ func (h *SessionHandler) ConnectSession(c *fiber.Ctx) error {
 func (h *SessionHandler) DisconnectSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	if err := h.sessionService.DisconnectSession(context.Background(), sessionID); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to disconnect session")
-		return h.sendError(c, "Failed to disconnect session", "DISCONNECT_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to disconnect session", "DISCONNECT_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -366,13 +366,13 @@ func (h *SessionHandler) DisconnectSession(c *fiber.Ctx) error {
 func (h *SessionHandler) GetQRCode(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	qrInfo, err := h.sessionService.GetQRCode(context.Background(), sessionID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get QR code")
-		return h.sendError(c, "Failed to get QR code", "QR_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to get QR code", "QR_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -390,17 +390,17 @@ func (h *SessionHandler) GetQRCode(c *fiber.Ctx) error {
 func (h *SessionHandler) SetProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	var req session.ProxyConfig
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
 	if err := h.sessionService.SetProxy(context.Background(), sessionID, &req); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to set proxy")
-		return h.sendError(c, "Failed to set proxy", "PROXY_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to set proxy", "PROXY_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -414,21 +414,21 @@ func (h *SessionHandler) SetProxy(c *fiber.Ctx) error {
 func (h *SessionHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	var req session.WebhookConfig
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_REQUEST", fiber.StatusBadRequest)
 	}
 
 	if req.URL == "" {
-		return h.sendError(c, "Webhook URL is required", "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendError(c, "Webhook URL is required", "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
 	if err := h.sessionService.SetWebhook(context.Background(), sessionID, &req); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to set webhook")
-		return h.sendError(c, "Failed to set webhook", "WEBHOOK_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to set webhook", "WEBHOOK_FAILED", fiber.StatusInternalServerError)
 	}
 
 	response := fiber.Map{
@@ -471,7 +471,7 @@ func (h *SessionHandler) GetActiveConnections(c *fiber.Ctx) error {
 	activeSessions, err := h.sessionRepo.GetActiveConnections()
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to get active connections")
-		return h.sendError(c, "Failed to get active connections", "ACTIVE_CONNECTIONS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to get active connections", "ACTIVE_CONNECTIONS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var connections []map[string]interface{}
@@ -509,7 +509,7 @@ func (h *SessionHandler) GetActiveConnections(c *fiber.Ctx) error {
 func (h *SessionHandler) LogoutSession(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	return c.JSON(fiber.Map{
@@ -532,13 +532,13 @@ func (h *SessionHandler) LogoutSession(c *fiber.Ctx) error {
 func (h *SessionHandler) GetSessionStatus(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	status, err := h.sessionService.GetSessionStatus(context.Background(), sessionID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get session status")
-		return h.sendError(c, "Failed to get session status", "STATUS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to get session status", "STATUS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.JSON(fiber.Map{
@@ -555,7 +555,7 @@ func (h *SessionHandler) GetSessionQRCode(c *fiber.Ctx) error {
 func (h *SessionHandler) GetSessionStats(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	return c.JSON(fiber.Map{
@@ -567,7 +567,7 @@ func (h *SessionHandler) GetSessionStats(c *fiber.Ctx) error {
 func (h *SessionHandler) GetProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	return c.JSON(fiber.Map{
@@ -579,7 +579,7 @@ func (h *SessionHandler) GetProxy(c *fiber.Ctx) error {
 func (h *SessionHandler) TestProxy(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	return c.JSON(fiber.Map{
@@ -605,12 +605,12 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 
 	var req dto.SessionPresenceRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	var presence types.Presence
@@ -620,13 +620,13 @@ func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	case "unavailable":
 		presence = types.PresenceUnavailable
 	default:
-		return h.sendError(c, "Invalid presence type. Use 'available' or 'unavailable'", "INVALID_PRESENCE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid presence type. Use 'available' or 'unavailable'", "INVALID_PRESENCE", fiber.StatusBadRequest)
 	}
 
 	err = client.SendPresence(presence)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("presence", req.Presence).Msg("Failed to set presence")
-		return h.sendError(c, fmt.Sprintf("Failed to set presence: %v", err), "PRESENCE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set presence: %v", err), "PRESENCE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().Str("session_id", sessionID).Str("presence", req.Presence).Msg("Presence set successfully")
@@ -644,16 +644,16 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 
 	var req dto.CheckContactRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if len(req.Phone) == 0 {
-		return h.sendError(c, "At least one phone number is required", "NO_PHONES", fiber.StatusBadRequest)
+		return utils.SendError(c, "At least one phone number is required", "NO_PHONES", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	var phoneNumbers []string
@@ -674,13 +674,13 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 	}
 
 	if len(phoneNumbers) == 0 {
-		return h.sendError(c, "No valid phone numbers provided", "NO_VALID_PHONES", fiber.StatusBadRequest)
+		return utils.SendError(c, "No valid phone numbers provided", "NO_VALID_PHONES", fiber.StatusBadRequest)
 	}
 
 	results, err := client.IsOnWhatsApp(phoneNumbers)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to check contacts on WhatsApp")
-		return h.sendError(c, fmt.Sprintf("Failed to check contacts: %v", err), "CHECK_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to check contacts: %v", err), "CHECK_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var contacts []map[string]interface{}
@@ -746,12 +746,12 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 
 	var req dto.ContactInfoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	cleanPhone := strings.ReplaceAll(req.Phone, "+", "")
@@ -759,24 +759,24 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
 
 	if len(cleanPhone) < 10 {
-		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
 	jid, err := types.ParseJID(cleanPhone + "@s.whatsapp.net")
 	if err != nil {
-		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
 	userInfo, err := client.GetUserInfo([]types.JID{jid})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to get user info")
-		return h.sendError(c, fmt.Sprintf("Failed to get contact info: %v", err), "INFO_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get contact info: %v", err), "INFO_FAILED", fiber.StatusInternalServerError)
 	}
 
 	isOnWhatsApp, err := client.IsOnWhatsApp([]string{cleanPhone})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to check if user is on WhatsApp")
-		return h.sendError(c, fmt.Sprintf("Failed to verify contact: %v", err), "VERIFY_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to verify contact: %v", err), "VERIFY_FAILED", fiber.StatusInternalServerError)
 	}
 
 	contact := map[string]interface{}{
@@ -846,12 +846,12 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 
 	var req dto.ContactAvatarRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	cleanPhone := strings.ReplaceAll(req.Phone, "+", "")
@@ -859,12 +859,12 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
 
 	if len(cleanPhone) < 10 {
-		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
 	jid, err := types.ParseJID(cleanPhone + "@s.whatsapp.net")
 	if err != nil {
-		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
 	avatar, err := client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{
@@ -930,7 +930,7 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	limit := c.QueryInt("limit", 100)
@@ -944,7 +944,7 @@ func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 	allContacts, err := client.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get contacts from store")
-		return h.sendError(c, fmt.Sprintf("Failed to get contacts: %v", err), "CONTACTS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get contacts: %v", err), "CONTACTS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var contacts []map[string]interface{}
@@ -1038,21 +1038,21 @@ func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
 
 	var req dto.PairPhoneRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	if client.IsLoggedIn() {
-		return h.sendError(c, "Session is already paired", "ALREADY_PAIRED", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session is already paired", "ALREADY_PAIRED", fiber.StatusBadRequest)
 	}
 
 	phoneValidator := utils.NewPhoneValidator()
 	if !phoneValidator.IsValidPhone(req.Phone) {
-		return h.sendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid phone number format", "INVALID_PHONE", fiber.StatusBadRequest)
 	}
 
 	cleanPhone := phoneValidator.CleanPhone(req.Phone)
@@ -1060,7 +1060,7 @@ func (h *SessionHandler) PairPhone(c *fiber.Ctx) error {
 	linkingCode, err := client.PairPhone(context.Background(), cleanPhone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("phone", req.Phone).Msg("Failed to pair phone")
-		return h.sendError(c, fmt.Sprintf("Failed to pair phone: %v", err), "PAIR_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to pair phone: %v", err), "PAIR_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -1096,13 +1096,13 @@ func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
 
 	var req dto.ProxyConfigRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	clientInterface, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err == nil {
 		if client, ok := clientInterface.(*whatsmeow.Client); ok && client.IsConnected() {
-			return h.sendError(c, "Cannot configure proxy while connected. Please disconnect first", "SESSION_CONNECTED", fiber.StatusBadRequest)
+			return utils.SendError(c, "Cannot configure proxy while connected. Please disconnect first", "SESSION_CONNECTED", fiber.StatusBadRequest)
 		}
 	}
 
@@ -1119,7 +1119,7 @@ func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
 	}
 
 	if req.Host == "" || req.Port == 0 {
-		return h.sendError(c, "Host and port are required when enabling proxy", "MISSING_PROXY_CONFIG", fiber.StatusBadRequest)
+		return utils.SendError(c, "Host and port are required when enabling proxy", "MISSING_PROXY_CONFIG", fiber.StatusBadRequest)
 	}
 
 	if req.Type == "" {
@@ -1164,7 +1164,7 @@ func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
 
 	var req dto.S3ConfigRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if !req.Enabled {
@@ -1180,7 +1180,7 @@ func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
 	}
 
 	if req.Bucket == "" || req.Region == "" || req.AccessKeyID == "" || req.SecretAccessKey == "" {
-		return h.sendError(c, "Bucket, region, access_key_id and secret_access_key are required", "MISSING_S3_CONFIG", fiber.StatusBadRequest)
+		return utils.SendError(c, "Bucket, region, access_key_id and secret_access_key are required", "MISSING_S3_CONFIG", fiber.StatusBadRequest)
 	}
 
 	h.logger.Info().
@@ -1291,13 +1291,13 @@ func (h *SessionHandler) ListNewsletters(c *fiber.Ctx) error {
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	newsletters, err := client.GetSubscribedNewsletters()
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get newsletters")
-		return h.sendError(c, fmt.Sprintf("Failed to get newsletters: %v", err), "NEWSLETTERS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get newsletters: %v", err), "NEWSLETTERS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var newsletterList []map[string]interface{}
@@ -1323,16 +1323,6 @@ func (h *SessionHandler) ListNewsletters(c *fiber.Ctx) error {
 		"newsletters": newsletterList,
 		"total":       len(newsletterList),
 		"timestamp":   time.Now().Unix(),
-	})
-}
-
-func (h *SessionHandler) sendError(c *fiber.Ctx, message, code string, statusCode int) error {
-	return c.Status(statusCode).JSON(fiber.Map{
-		"success": false,
-		"error": fiber.Map{
-			"message": message,
-			"code":    code,
-		},
 	})
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/felipe/zemeow/internal/api/dto"
-	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/api/utils"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/webhook"
@@ -41,13 +41,13 @@ func NewWebhookHandler(webhookService *webhook.WebhookService, sessionRepo repos
 func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendAccessDeniedError(c)
 	}
 
 	session, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendNotFoundError(c, "Session not found")
 	}
 
 	webhooks := []map[string]interface{}{}
@@ -86,26 +86,26 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied to this session", "SESSION_ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendAccessDeniedError(c)
 	}
 
 	var req dto.WebhookConfigRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendInvalidJSONError(c)
 	}
 
 	validEvents := h.getValidEvents()
 	for _, event := range req.Events {
 		if !h.isValidEvent(event, validEvents) {
-			return h.sendError(c, fmt.Sprintf("Invalid event: %s", event), "INVALID_EVENT", fiber.StatusBadRequest)
+			return utils.SendError(c, fmt.Sprintf("Invalid event: %s", event), "INVALID_EVENT", fiber.StatusBadRequest)
 		}
 	}
 
 	session, err := h.sessionRepo.GetByIdentifier(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
 	}
 
 	if req.Active {
@@ -118,7 +118,7 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 
 	if err := h.sessionRepo.Update(session); err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to update webhook configuration")
-		return h.sendError(c, "Failed to save webhook configuration", "WEBHOOK_SAVE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to save webhook configuration", "WEBHOOK_SAVE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -206,25 +206,4 @@ func (h *WebhookHandler) isValidEvent(event string, validEvents []map[string]int
 		}
 	}
 	return false
-}
-
-func (h *WebhookHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
-	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil {
-		return false
-	}
-
-	if authCtx.IsGlobalKey {
-		return true
-	}
-
-	return authCtx.SessionID == sessionID
-}
-
-func (h *WebhookHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	return c.Status(status).JSON(fiber.Map{
-		"error":   code,
-		"message": message,
-		"code":    status,
-	})
 }

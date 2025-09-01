@@ -118,13 +118,3 @@ func (h *AuthHandler) extractAPIKey(c *fiber.Ctx) string {
 
 	return c.Query("api_key")
 }
-
-func (h *AuthHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	errorResp := fiber.Map{
-		"error":   code,
-		"message": message,
-		"status":  status,
-	}
-
-	return c.Status(status).JSON(errorResp)
-}

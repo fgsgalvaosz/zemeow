@@ -17,7 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/felipe/zemeow/internal/api/dto"
-	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/api/utils"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/media"
 	"github.com/felipe/zemeow/internal/service/session"
@@ -58,27 +58,27 @@ func (h *MessageHandler) SendMessage(c *fiber.Ctx) error {
 func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendAccessDeniedError(c)
 	}
 
 	var req dto.SendTextRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendInvalidJSONError(c)
 	}
 
 	if err := h.validateTextRequest(&req); err != nil {
-		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendValidationError(c, err.Error())
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", utils.ErrCodeSessionNotReady, fiber.StatusBadRequest)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -98,15 +98,15 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send message: %v", err), utils.ErrCodeSendFailed, fiber.StatusInternalServerError)
 	}
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+	return utils.SendSuccess(c, fiber.Map{
 		"message_id": messageID,
 		"status":     "sent",
 		"timestamp":  response.Timestamp,
 		"recipient":  req.To,
-	})
+	}, "Message sent successfully")
 }
 
 func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, contentType string, data []byte, direction, chatJID, senderJID string) (*media.MediaInfo, error) {
@@ -163,27 +163,27 @@ func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, conten
 func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	var req dto.SendMediaRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if err := h.validateMediaRequest(&req); err != nil {
-		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	fileData, err := h.decodeBase64Media(req.Media)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_MEDIA_DATA", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_MEDIA_DATA", fiber.StatusBadRequest)
 	}
 
 	var mediaType whatsmeow.MediaType
@@ -199,17 +199,17 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	case dto.MediaTypeSticker:
 		mediaType = whatsmeow.MediaImage
 	default:
-		return h.sendError(c, "Unsupported media type", "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Unsupported media type", "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
 	}
 
 	uploaded, err := client.Upload(context.Background(), fileData, mediaType)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -219,7 +219,7 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 
 	msg, err := h.buildMediaMessage(req, fileData, uploaded)
 	if err != nil {
-		return h.sendError(c, err.Error(), "BUILD_MESSAGE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, err.Error(), "BUILD_MESSAGE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	if req.ContextInfo != nil {
@@ -228,7 +228,7 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send media: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send media: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -257,27 +257,27 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	var req dto.SendLocationRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if err := h.validateLocationRequest(&req); err != nil {
-		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -299,7 +299,7 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send location: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send location: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -326,27 +326,27 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	var req dto.SendContactRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if err := h.validateContactRequest(&req); err != nil {
-		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -367,7 +367,7 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send contact: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send contact: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -396,17 +396,17 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 
 	var req dto.SendStickerRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -416,12 +416,12 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 
 	filedata, err := h.processMediaData(req.Sticker)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to process sticker: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
+		return utils.SendError(c, fmt.Sprintf("Failed to process sticker: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
 	}
 
 	uploaded, err := client.Upload(context.Background(), filedata, whatsmeow.MediaImage)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to upload sticker: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to upload sticker: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
 	msg := &waE2E.Message{
@@ -442,7 +442,7 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send sticker: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send sticker: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -471,17 +471,17 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 
 	var req dto.ReactRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	msg := &waE2E.Message{
@@ -497,7 +497,7 @@ func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send reaction: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send reaction: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -514,17 +514,17 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 
 	var req dto.DeleteMessageRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	msg := &waE2E.Message{
@@ -540,7 +540,7 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to delete message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to delete message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -557,17 +557,17 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 
 	var req dto.ChatPresenceRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	_, err = h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	var presence types.Presence
@@ -586,12 +586,12 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 
 		presence = types.PresenceAvailable
 	default:
-		return h.sendError(c, "Invalid presence type", "INVALID_PRESENCE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid presence type", "INVALID_PRESENCE", fiber.StatusBadRequest)
 	}
 
 	err = client.SendPresence(presence)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send presence: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send presence: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -618,17 +618,17 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 
 	var req dto.MarkReadRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	var messageIDs []types.MessageID
@@ -638,7 +638,7 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 
 	err = client.MarkRead(messageIDs, time.Now(), recipient, recipient)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to mark as read: %v", err), "MARK_READ_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to mark as read: %v", err), "MARK_READ_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -669,16 +669,16 @@ func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 
 	var req dto.DownloadMediaRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	if req.Type != mediaType {
-		return h.sendError(c, fmt.Sprintf("Expected media type %s, got %s", mediaType, req.Type), "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
+		return utils.SendError(c, fmt.Sprintf("Expected media type %s, got %s", mediaType, req.Type), "INVALID_MEDIA_TYPE", fiber.StatusBadRequest)
 	}
 
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
 	h.logger.Warn().
@@ -714,17 +714,17 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 
 	var req dto.SendButtonsRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -774,7 +774,7 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 
 		response, err = client.SendMessage(context.Background(), recipient, textMsg, whatsmeow.SendRequestExtra{ID: messageID})
 		if err != nil {
-			return h.sendError(c, fmt.Sprintf("Failed to send buttons: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+			return utils.SendError(c, fmt.Sprintf("Failed to send buttons: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 		}
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -816,17 +816,17 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 
 	var req dto.SendListRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -893,7 +893,7 @@ func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 
 		response, err = client.SendMessage(context.Background(), recipient, textMsg, whatsmeow.SendRequestExtra{ID: messageID})
 		if err != nil {
-			return h.sendError(c, fmt.Sprintf("Failed to send list: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+			return utils.SendError(c, fmt.Sprintf("Failed to send list: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 		}
 
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -923,17 +923,17 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 
 	var req dto.SendPollRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -967,7 +967,7 @@ func (h *MessageHandler) SendPoll(c *fiber.Ctx) error {
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Msg("Failed to send poll")
-		return h.sendError(c, fmt.Sprintf("Failed to send poll: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send poll: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -996,17 +996,17 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 
 	var req dto.EditMessageRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	msg := &waE2E.Message{
@@ -1031,7 +1031,7 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("to", req.To).Str("message_id", req.MessageID).Msg("Failed to edit message")
-		return h.sendError(c, fmt.Sprintf("Failed to edit message: %v", err), "EDIT_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to edit message: %v", err), "EDIT_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -1066,7 +1066,7 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 	var req dto.SendImageRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	return h.SendMedia(c)
@@ -1088,7 +1088,7 @@ func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 	var req dto.SendAudioRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	return h.SendMedia(c)
@@ -1110,7 +1110,7 @@ func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 	var req dto.SendDocumentRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	return h.SendMedia(c)
@@ -1132,7 +1132,7 @@ func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 	var req dto.SendVideoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	return h.SendMedia(c)
@@ -1151,8 +1151,8 @@ func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	phone := c.Query("phone")
@@ -1160,7 +1160,7 @@ func (h *MessageHandler) GetMessages(c *fiber.Ctx) error {
 	offset := c.QueryInt("offset", 0)
 
 	if phone == "" {
-		return h.sendError(c, "Phone number is required", "MISSING_PHONE", fiber.StatusBadRequest)
+		return utils.SendError(c, "Phone number is required", "MISSING_PHONE", fiber.StatusBadRequest)
 	}
 
 	h.logger.Info().Str("session_id", sessionID).Str("phone", phone).Msg("GetMessages called - returning empty for now")
@@ -1219,29 +1219,6 @@ func (h *MessageHandler) SendBulkMessages(c *fiber.Ctx) error {
 		"session_id": sessionID,
 		"status":     "sent",
 		"message":    "Bulk messages endpoint",
-	})
-}
-
-func (h *MessageHandler) hasSessionAccess(c *fiber.Ctx, sessionID string) bool {
-	authCtx := middleware.GetAuthContext(c)
-	if authCtx == nil {
-		return false
-	}
-
-	if authCtx.IsGlobalKey {
-		return true
-	}
-
-	return authCtx.SessionID == sessionID
-}
-
-func (h *MessageHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	return c.Status(status).JSON(fiber.Map{
-		"success": false,
-		"error": fiber.Map{
-			"message": message,
-			"code":    code,
-		},
 	})
 }
 
@@ -1645,22 +1622,22 @@ func (h *MessageHandler) downloadMediaFromURL(url string) ([]byte, error) {
 
 func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dto.SendMediaRequest) error {
 
-	if !h.hasSessionAccess(c, sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	if err := h.validateMediaRequest(&req); err != nil {
-		return h.sendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	recipient, err := h.parseJID(req.To)
 	if err != nil {
-		return h.sendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
+		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
 	messageID := req.MessageID
@@ -1670,17 +1647,17 @@ func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dt
 
 	filedata, err := h.processMediaData(req.Media)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to process media: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
+		return utils.SendError(c, fmt.Sprintf("Failed to process media: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
 	}
 
 	uploaded, err := client.Upload(context.Background(), filedata, whatsmeow.MediaType(req.Type))
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
 	msg, err := h.buildMediaMessage(req, filedata, uploaded)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to build message: %v", err), "MESSAGE_BUILD_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to build message: %v", err), "MESSAGE_BUILD_FAILED", fiber.StatusInternalServerError)
 	}
 
 	if req.ContextInfo != nil {
@@ -1689,7 +1666,7 @@ func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dt
 
 	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{

@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/felipe/zemeow/internal/api/middleware"
+	"github.com/felipe/zemeow/internal/api/utils"
 	"github.com/felipe/zemeow/internal/db/repositories"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/media"
@@ -43,22 +42,22 @@ func NewMediaHandler(mediaService *media.MediaService, messageRepo repositories.
 func (h *MediaHandler) GetMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	path := c.Query("path")
 	if path == "" {
-		return h.sendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
+		return utils.SendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
 	}
 
 	if !h.validateSessionPath(sessionID, path) {
-		return h.sendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
+		return utils.SendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	mediaInfo, err := h.mediaService.GetMedia(context.Background(), path)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("path", path).Msg("Failed to get media")
-		return h.sendError(c, "Failed to get media", "MEDIA_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendError(c, "Failed to get media", "MEDIA_NOT_FOUND", fiber.StatusNotFound)
 	}
 
 	return c.JSON(fiber.Map{
@@ -82,28 +81,28 @@ func (h *MediaHandler) GetMedia(c *fiber.Ctx) error {
 func (h *MediaHandler) DownloadMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	path := c.Query("path")
 	if path == "" {
-		return h.sendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
+		return utils.SendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
 	}
 
 	if !h.validateSessionPath(sessionID, path) {
-		return h.sendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
+		return utils.SendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
 	mediaInfo, err := h.mediaService.GetMedia(context.Background(), path)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("path", path).Msg("Failed to get media info")
-		return h.sendError(c, "Failed to get media", "MEDIA_NOT_FOUND", fiber.StatusNotFound)
+		return utils.SendError(c, "Failed to get media", "MEDIA_NOT_FOUND", fiber.StatusNotFound)
 	}
 
 	data, err := h.mediaService.DownloadMedia(context.Background(), path)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("path", path).Msg("Failed to download media")
-		return h.sendError(c, "Failed to download media", "DOWNLOAD_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to download media", "DOWNLOAD_FAILED", fiber.StatusInternalServerError)
 	}
 
 	c.Set("Content-Type", mediaInfo.ContentType)
@@ -130,7 +129,7 @@ func (h *MediaHandler) DownloadMedia(c *fiber.Ctx) error {
 func (h *MediaHandler) ListSessionMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	page := c.QueryInt("page", 1)
@@ -148,7 +147,7 @@ func (h *MediaHandler) ListSessionMedia(c *fiber.Ctx) error {
 	messages, total, err := h.messageRepo.GetSessionMediaMessages(sessionID, page, limit, mediaType, direction)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get session media")
-		return h.sendError(c, "Failed to get media list", "QUERY_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to get media list", "QUERY_FAILED", fiber.StatusInternalServerError)
 	}
 
 	totalPages := (total + limit - 1) / limit
@@ -186,27 +185,26 @@ func (h *MediaHandler) ListSessionMedia(c *fiber.Ctx) error {
 func (h *MediaHandler) DeleteMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 	if sessionID == "" {
-		return h.sendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session ID is required", "MISSING_SESSION_ID", fiber.StatusBadRequest)
 	}
 
 	path := c.Query("path")
 	if path == "" {
-		return h.sendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
+		return utils.SendError(c, "Media path is required", "MISSING_PATH", fiber.StatusBadRequest)
 	}
 
 	if !h.validateSessionPath(sessionID, path) {
-		return h.sendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
+		return utils.SendError(c, "Access denied to this media", "ACCESS_DENIED", fiber.StatusForbidden)
 	}
 
-	auth := middleware.GetAuthContext(c)
-	if auth == nil || (!auth.IsGlobalKey && auth.SessionID != sessionID) {
-		return h.sendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
+	if !utils.HasSessionAccess(c, sessionID) {
+		return utils.SendAccessDeniedError(c)
 	}
 
 	err := h.mediaService.DeleteMedia(context.Background(), path)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("path", path).Msg("Failed to delete media")
-		return h.sendError(c, "Failed to delete media", "DELETE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, "Failed to delete media", "DELETE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	err = h.messageRepo.ClearMinIOReferences(path)
@@ -223,13 +221,4 @@ func (h *MediaHandler) DeleteMedia(c *fiber.Ctx) error {
 func (h *MediaHandler) validateSessionPath(sessionID, path string) bool {
 	expectedPrefix := fmt.Sprintf("sessions/%s/", sessionID)
 	return len(path) > len(expectedPrefix) && path[:len(expectedPrefix)] == expectedPrefix
-}
-
-func (h *MediaHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	return c.Status(status).JSON(fiber.Map{
-		"success":   false,
-		"error":     code,
-		"message":   message,
-		"timestamp": time.Now().Unix(),
-	})
 }

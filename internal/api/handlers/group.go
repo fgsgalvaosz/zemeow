@@ -11,6 +11,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/felipe/zemeow/internal/api/dto"
+	"github.com/felipe/zemeow/internal/api/utils"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/service/session"
 )
@@ -45,12 +46,12 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 
 	var req dto.CreateGroupRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendInvalidJSONError(c)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendInternalError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err))
 	}
 
 	var participants []types.JID
@@ -76,7 +77,7 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	}
 
 	if len(participants) == 0 {
-		return h.sendError(c, "No valid participants provided", "NO_PARTICIPANTS", fiber.StatusBadRequest)
+		return utils.SendError(c, "No valid participants provided", "NO_PARTICIPANTS", fiber.StatusBadRequest)
 	}
 
 	var phoneNumbers []string
@@ -105,7 +106,7 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	}
 
 	if len(validParticipants) == 0 {
-		return h.sendError(c, "No participants found on WhatsApp", "NO_VALID_PARTICIPANTS", fiber.StatusBadRequest)
+		return utils.SendError(c, "No participants found on WhatsApp", "NO_VALID_PARTICIPANTS", fiber.StatusBadRequest)
 	}
 
 	resp, err := client.CreateGroup(whatsmeow.ReqCreateGroup{
@@ -115,7 +116,7 @@ func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	})
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_name", req.Name).Msg("Failed to create group")
-		return h.sendError(c, fmt.Sprintf("Failed to create group: %v", err), "CREATE_GROUP_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to create group: %v", err), "CREATE_GROUP_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -151,13 +152,13 @@ func (h *GroupHandler) ListGroups(c *fiber.Ctx) error {
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groups, err := client.GetJoinedGroups()
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get joined groups")
-		return h.sendError(c, fmt.Sprintf("Failed to get groups: %v", err), "GET_GROUPS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get groups: %v", err), "GET_GROUPS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var groupList []map[string]interface{}
@@ -205,23 +206,23 @@ func (h *GroupHandler) GetGroupInfo(c *fiber.Ctx) error {
 
 	var req dto.GroupInfoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	groupInfo, err := client.GetGroupInfo(groupJID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to get group info")
-		return h.sendError(c, fmt.Sprintf("Failed to get group info: %v", err), "GROUP_INFO_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get group info: %v", err), "GROUP_INFO_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var participants []map[string]interface{}
@@ -258,23 +259,23 @@ func (h *GroupHandler) GetInviteLink(c *fiber.Ctx) error {
 
 	var req dto.GroupInviteLinkRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	inviteLink, err := client.GetGroupInviteLink(groupJID, false)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to get invite link")
-		return h.sendError(c, fmt.Sprintf("Failed to get invite link: %v", err), "INVITE_LINK_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get invite link: %v", err), "INVITE_LINK_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Group invite link retrieved")
@@ -305,23 +306,23 @@ func (h *GroupHandler) LeaveGroup(c *fiber.Ctx) error {
 
 	var req dto.LeaveGroupRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.LeaveGroup(groupJID)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to leave group")
-		return h.sendError(c, fmt.Sprintf("Failed to leave group: %v", err), "LEAVE_GROUP_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to leave group: %v", err), "LEAVE_GROUP_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Left group successfully")
@@ -339,7 +340,7 @@ func (h *GroupHandler) SetGroupPhoto(c *fiber.Ctx) error {
 
 	var req dto.SetGroupPhotoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	h.logger.Info().Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Group photo update requested")
@@ -358,23 +359,23 @@ func (h *GroupHandler) SetGroupName(c *fiber.Ctx) error {
 
 	var req dto.SetGroupNameRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.SetGroupName(groupJID, req.Name)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to set group name")
-		return h.sendError(c, fmt.Sprintf("Failed to set group name: %v", err), "SET_NAME_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set group name: %v", err), "SET_NAME_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -397,23 +398,23 @@ func (h *GroupHandler) SetGroupTopic(c *fiber.Ctx) error {
 
 	var req dto.SetGroupTopicRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.SetGroupTopic(groupJID, "", "", req.Topic)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to set group topic")
-		return h.sendError(c, fmt.Sprintf("Failed to set group topic: %v", err), "SET_TOPIC_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set group topic: %v", err), "SET_TOPIC_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -436,23 +437,23 @@ func (h *GroupHandler) SetGroupAnnounce(c *fiber.Ctx) error {
 
 	var req dto.SetGroupAnnounceRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.SetGroupAnnounce(groupJID, req.AnnounceMode)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to set group announce mode")
-		return h.sendError(c, fmt.Sprintf("Failed to set group announce mode: %v", err), "SET_ANNOUNCE_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set group announce mode: %v", err), "SET_ANNOUNCE_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -475,23 +476,23 @@ func (h *GroupHandler) SetGroupLocked(c *fiber.Ctx) error {
 
 	var req dto.SetGroupLockedRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.SetGroupLocked(groupJID, req.Locked)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to set group locked mode")
-		return h.sendError(c, fmt.Sprintf("Failed to set group locked mode: %v", err), "SET_LOCKED_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set group locked mode: %v", err), "SET_LOCKED_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -526,17 +527,17 @@ func (h *GroupHandler) JoinGroup(c *fiber.Ctx) error {
 
 	var req dto.JoinGroupRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
 	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("JoinGroup needs proper implementation")
 
-	return h.sendError(c, "Join group functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
+	return utils.SendError(c, "Join group functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
 
 }
 
@@ -558,17 +559,17 @@ func (h *GroupHandler) UpdateParticipants(c *fiber.Ctx) error {
 
 	var req dto.UpdateGroupParticipantsRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	var participantJIDs []types.JID
@@ -593,7 +594,7 @@ func (h *GroupHandler) UpdateParticipants(c *fiber.Ctx) error {
 	}
 
 	if len(participantJIDs) == 0 {
-		return h.sendError(c, "No valid participants provided", "NO_VALID_PARTICIPANTS", fiber.StatusBadRequest)
+		return utils.SendError(c, "No valid participants provided", "NO_VALID_PARTICIPANTS", fiber.StatusBadRequest)
 	}
 
 	var results []types.GroupParticipant
@@ -613,12 +614,12 @@ func (h *GroupHandler) UpdateParticipants(c *fiber.Ctx) error {
 		results, err = client.UpdateGroupParticipants(groupJID, participantJIDs, whatsmeow.ParticipantChangeDemote)
 		operation = "demoted"
 	default:
-		return h.sendError(c, "Invalid action. Use: add, remove, promote, demote", "INVALID_ACTION", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid action. Use: add, remove, promote, demote", "INVALID_ACTION", fiber.StatusBadRequest)
 	}
 
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Str("action", req.Action).Msg("Failed to update group participants")
-		return h.sendError(c, fmt.Sprintf("Failed to update participants: %v", err), "UPDATE_PARTICIPANTS_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to update participants: %v", err), "UPDATE_PARTICIPANTS_FAILED", fiber.StatusInternalServerError)
 	}
 
 	var successfulChanges []map[string]interface{}
@@ -675,23 +676,23 @@ func (h *GroupHandler) RemoveGroupPhoto(c *fiber.Ctx) error {
 
 	var req dto.GroupPhotoRemoveRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	_, err = client.SetGroupPhoto(groupJID, nil)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to remove group photo")
-		return h.sendError(c, fmt.Sprintf("Failed to remove group photo: %v", err), "REMOVE_PHOTO_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to remove group photo: %v", err), "REMOVE_PHOTO_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -712,23 +713,23 @@ func (h *GroupHandler) SetGroupEphemeral(c *fiber.Ctx) error {
 
 	var req dto.GroupEphemeralRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	client, err := h.getWhatsAppClient(sessionID)
 	if err != nil {
-		return h.sendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
 	}
 
 	groupJID, err := types.ParseJID(req.GroupID)
 	if err != nil {
-		return h.sendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid group ID format", "INVALID_GROUP_ID", fiber.StatusBadRequest)
 	}
 
 	err = client.SetDisappearingTimer(groupJID, time.Duration(req.Duration)*time.Second)
 	if err != nil {
 		h.logger.Error().Err(err).Str("session_id", sessionID).Str("group_id", req.GroupID).Msg("Failed to set disappearing timer")
-		return h.sendError(c, fmt.Sprintf("Failed to set disappearing timer: %v", err), "SET_TIMER_FAILED", fiber.StatusInternalServerError)
+		return utils.SendError(c, fmt.Sprintf("Failed to set disappearing timer: %v", err), "SET_TIMER_FAILED", fiber.StatusInternalServerError)
 	}
 
 	h.logger.Info().
@@ -764,26 +765,17 @@ func (h *GroupHandler) GetInviteInfo(c *fiber.Ctx) error {
 
 	var req dto.GroupInviteInfoRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
+		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
 	}
 
 	_, err := h.sessionService.GetWhatsAppClient(context.Background(), sessionID)
 	if err != nil {
-		return h.sendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
+		return utils.SendError(c, "Session not found or not connected", "SESSION_NOT_READY", fiber.StatusBadRequest)
 	}
 
 	h.logger.Warn().Str("session_id", sessionID).Str("invite_code", req.InviteCode).Msg("GetInviteInfo needs proper implementation")
 
-	return h.sendError(c, "Get invite info functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
-}
-
-func (h *GroupHandler) sendError(c *fiber.Ctx, message, code string, status int) error {
-	h.logger.Error().Str("error", message).Str("code", code).Int("status", status).Msg("Group handler error")
-	return c.Status(status).JSON(fiber.Map{
-		"success": false,
-		"error":   message,
-		"code":    code,
-	})
+	return utils.SendError(c, "Get invite info functionality requires updated implementation", "NOT_IMPLEMENTED", fiber.StatusNotImplemented)
 }
 
 func (h *GroupHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {
