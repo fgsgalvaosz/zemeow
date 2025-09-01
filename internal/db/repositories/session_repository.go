@@ -63,16 +63,16 @@ func (r *sessionRepository) Create(session *models.Session) error {
 		INSERT INTO sessions (
 			id, name, api_key, jid, status,
 			proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-			webhook_url, webhook_events, created_at, updated_at, metadata
+			webhook_url, webhook_events, webhook_payload_mode, created_at, updated_at, metadata
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
 		)
 	`
 
 	_, err := r.db.Exec(query,
 		session.ID, session.Name, session.APIKey, session.JID, string(session.Status),
 		session.ProxyEnabled, session.ProxyHost, session.ProxyPort, session.ProxyUsername, session.ProxyPassword,
-		session.WebhookURL, session.WebhookEvents, session.CreatedAt, session.UpdatedAt, session.Metadata,
+		session.WebhookURL, session.WebhookEvents, session.WebhookPayloadMode, session.CreatedAt, session.UpdatedAt, session.Metadata,
 	)
 
 	if err != nil {
@@ -88,7 +88,7 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	query := `
 		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qr_code
+		       webhook_url, webhook_events, webhook_payload_mode, created_at, updated_at, last_connected_at, metadata, qr_code
 		FROM sessions WHERE id = $1
 	`
 
@@ -97,7 +97,7 @@ func (r *sessionRepository) GetByID(id uuid.UUID) (*models.Session, error) {
 	err := r.db.QueryRow(query, id).Scan(
 		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
-		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
+		&session.WebhookURL, &session.WebhookEvents, &session.WebhookPayloadMode, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
 	)
 
 	if err != nil {
@@ -129,7 +129,7 @@ func (r *sessionRepository) GetByName(name string) (*models.Session, error) {
 	query := `
 		SELECT id, name, api_key, jid, status,
 		       proxy_enabled, proxy_host, proxy_port, proxy_username, proxy_password,
-		       webhook_url, webhook_events, created_at, updated_at, last_connected_at, metadata, qr_code
+		       webhook_url, webhook_events, webhook_payload_mode, created_at, updated_at, last_connected_at, metadata, qr_code
 		FROM sessions WHERE name = $1
 	`
 
@@ -138,7 +138,7 @@ func (r *sessionRepository) GetByName(name string) (*models.Session, error) {
 	err := r.db.QueryRow(query, name).Scan(
 		&session.ID, &session.Name, &session.APIKey, &session.JID, &session.Status,
 		&session.ProxyEnabled, &session.ProxyHost, &session.ProxyPort, &session.ProxyUsername, &session.ProxyPassword,
-		&session.WebhookURL, &session.WebhookEvents, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
+		&session.WebhookURL, &session.WebhookEvents, &session.WebhookPayloadMode, &session.CreatedAt, &session.UpdatedAt, &session.LastConnectedAt, &session.Metadata, &qrcode,
 	)
 
 	if err != nil {

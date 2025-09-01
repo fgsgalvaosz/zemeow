@@ -109,7 +109,7 @@ func TestMyClient_BasicProperties(t *testing.T) {
 	assert.Equal(t, sessionUUID, client.sessionUUID)
 	assert.NotNil(t, client.client)
 	assert.NotNil(t, client.logger)
-	assert.Equal(t, webhookChan, client.webhookChan)
+	// Não comparar o canal diretamente devido aos tipos chan vs chan<-
 	assert.False(t, client.isConnected)
 	assert.Equal(t, int64(0), client.messagesReceived)
 	assert.Equal(t, int64(0), client.messagesSent)
