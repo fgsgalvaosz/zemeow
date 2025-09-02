@@ -20,7 +20,7 @@ import (
 type Server struct {
 	app    *fiber.App
 	config *config.Config
-	logger logger.Logger
+	logger *logger.ComponentLogger
 	router *routers.Router
 }
 
@@ -84,19 +84,25 @@ func NewServer(
 	return &Server{
 		app:    app,
 		config: cfg,
-		logger: logger.GetWithSession("api_server"),
+		logger: logger.ForComponent("api").WithSession("api_server"),
 		router: router,
 	}
 }
 
 func (s *Server) SetupRoutes() {
+	setupOp := s.logger.ForOperation("setup_routes")
+
 	s.app.Use(recover.New())
 	s.router.SetupRoutes()
-	s.logger.Info().Msg("API routes configured successfully")
+
+	setupOp.Success().
+		Msg(logger.GetStandardizedMessage("api", "setup_routes", "success"))
 }
 
 func (s *Server) Start() error {
 	s.SetupRoutes()
+
+	startOp := s.logger.ForOperation("start_server")
 
 	port := s.config.Server.Port
 	if port == 0 {
@@ -105,14 +111,31 @@ func (s *Server) Start() error {
 
 	address := fmt.Sprintf(":%d", port)
 
-	s.logger.Info().Int("port", port).Msg("Starting HTTP server")
+	startOp.Starting().
+		Int("port", port).
+		Str("address", address).
+		Msg(logger.GetStandardizedMessage("api", "start_server", "starting"))
 
 	return s.app.Listen(address)
 }
 
 func (s *Server) Stop() error {
-	s.logger.Info().Msg("Stopping HTTP server")
-	return s.app.Shutdown()
+	stopOp := s.logger.ForOperation("stop_server")
+
+	stopOp.Starting().
+		Msg(logger.GetStandardizedMessage("api", "stop_server", "starting"))
+
+	err := s.app.Shutdown()
+	if err != nil {
+		stopOp.Failed("SHUTDOWN_ERROR").
+			Err(err).
+			Msg(logger.GetStandardizedMessage("api", "stop_server", "failed"))
+		return err
+	}
+
+	stopOp.Success().
+		Msg(logger.GetStandardizedMessage("api", "stop_server", "success"))
+	return nil
 }
 
 func (s *Server) GetApp() *fiber.App {

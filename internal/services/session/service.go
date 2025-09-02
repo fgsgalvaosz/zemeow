@@ -37,22 +37,28 @@ type Service interface {
 type SessionService struct {
 	repository repositories.SessionRepository
 	manager    interface{}
-	logger     logger.Logger
+	logger     *logger.ComponentLogger
 }
 
 func NewService(repository repositories.SessionRepository, manager interface{}) Service {
 	return &SessionService{
 		repository: repository,
 		manager:    manager,
-		logger:     logger.GetWithSession("session_service"),
+		logger:     logger.ForComponent("session"),
 	}
 }
 
 func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*SessionInfo, error) {
-	s.logger.Info().Str("name", config.Name).Msg("Creating new session")
+	createOp := s.logger.ForOperation("create")
+
+	createOp.Starting().
+		Str("name", config.Name).
+		Msg(logger.GetStandardizedMessage("session", "create", "starting"))
 
 	if err := s.validateConfig(config); err != nil {
-		s.logger.Error().Err(err).Msg("Invalid session configuration")
+		createOp.Failed("INVALID_CONFIG").
+			Err(err).
+			Msg(logger.GetStandardizedMessage("session", "create", "failed"))
 		return nil, err
 	}
 
@@ -63,13 +69,20 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 	sessionID := uuid.New()
 
 	if exists, _ := s.repository.Exists(config.Name); exists {
+		createOp.Failed("NAME_EXISTS").
+			Str("name", config.Name).
+			Msg("Session name already exists")
 		return nil, fmt.Errorf("session name already exists: %s", config.Name)
 	}
 
 	apiKey := config.APIKey
 	if apiKey == "" {
 		apiKey = generateAPIKey()
-		s.logger.Info().Str("session_id", sessionID.String()).Str("name", config.Name).Msg("Generated automatic API key for session")
+		createOp.Info().
+			Str("session_id", sessionID.String()).
+			Str("name", config.Name).
+			Str("status", "api_key_generated").
+			Msg("Generated automatic API key for session")
 	}
 
 	session := &models.Session{
@@ -100,7 +113,10 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 	}
 
 	if err := s.repository.Create(session); err != nil {
-		s.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to create session in database")
+		createOp.Failed("DATABASE_ERROR").
+			Err(err).
+			Str("session_id", session.ID.String()).
+			Msg(logger.GetStandardizedMessage("session", "create", "failed"))
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
@@ -108,10 +124,15 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		InitializeNewSession(*models.Session) error
 	}); ok {
 		if err := manager.InitializeNewSession(session); err != nil {
-			s.logger.Error().Err(err).Str("session_id", session.ID.String()).Msg("Failed to initialize session in WhatsApp manager")
-
+			createOp.Warn().
+				Err(err).
+				Str("session_id", session.ID.String()).
+				Msg("Failed to initialize session in WhatsApp manager")
 		} else {
-			s.logger.Info().Str("session_id", session.ID.String()).Msg("Session initialized in WhatsApp manager")
+			createOp.Info().
+				Str("session_id", session.ID.String()).
+				Str("status", "manager_initialized").
+				Msg("Session initialized in WhatsApp manager")
 		}
 	}
 
@@ -124,7 +145,10 @@ func (s *SessionService) CreateSession(ctx context.Context, config *Config) (*Se
 		UpdatedAt: session.UpdatedAt,
 	}
 
-	s.logger.Info().Str("session_id", session.ID.String()).Str("name", config.Name).Msg("Session created successfully")
+	createOp.Success().
+		Str("session_id", session.ID.String()).
+		Str("name", config.Name).
+		Msg(logger.GetStandardizedMessage("session", "create", "success"))
 	return sessionInfo, nil
 }
 

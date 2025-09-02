@@ -16,7 +16,7 @@ import (
 type DB struct {
 	*sql.DB
 	config *config.DatabaseConfig
-	logger logger.Logger
+	logger *logger.ComponentLogger
 }
 
 func Connect(cfg *config.Config) (*DB, error) {
@@ -28,9 +28,14 @@ func Migrate(db *DB) error {
 }
 
 func New(cfg *config.DatabaseConfig) (*DB, error) {
-	log := logger.Get()
+	compLogger := logger.ForComponent("database")
+	connectOp := compLogger.ForOperation("connect")
 
-	log.Info().Str("host", cfg.Host).Int("port", cfg.Port).Str("database", cfg.Name).Msg("Connecting to database")
+	connectOp.Starting().
+		Str("host", cfg.Host).
+		Int("port", cfg.Port).
+		Str("database", cfg.Name).
+		Msg(logger.GetStandardizedMessage("database", "connect", "starting"))
 
 	db, err := sql.Open("postgres", cfg.URL)
 	if err != nil {
@@ -46,12 +51,13 @@ func New(cfg *config.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Info().Msg("Database connection established successfully")
+	connectOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "connect", "success"))
 
 	return &DB{
 		DB:     db,
 		config: cfg,
-		logger: log,
+		logger: compLogger,
 	}, nil
 }
 
@@ -61,26 +67,36 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) GetSQLStore() *sqlstore.Container {
+	storeOp := db.logger.ForOperation("create_sqlstore")
+
+	storeOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "create_sqlstore", "starting"))
 
 	whatsmeowLogger := logger.GetWhatsAppLogger("sqlstore")
 
 	container := sqlstore.NewWithDB(db.DB, "postgres", whatsmeowLogger)
 
 	if err := container.Upgrade(context.Background()); err != nil {
-
 		if strings.Contains(err.Error(), "already exists") {
-			db.logger.Info().Msg("WhatsApp tables already exist, skipping upgrade")
+			storeOp.Info().
+				Str("status", "skipped").
+				Msg("WhatsApp tables already exist, skipping upgrade")
 		} else {
-			db.logger.Error().Err(err).Msg("Failed to upgrade whatsmeow store")
+			storeOp.Failed("UPGRADE_ERROR").
+				Err(err).
+				Msg(logger.GetStandardizedMessage("database", "create_sqlstore", "failed"))
 			return nil
 		}
+	} else {
+		storeOp.Success().
+			Msg(logger.GetStandardizedMessage("database", "create_sqlstore", "success"))
 	}
 
-	db.logger.Info().Msg("WhatsApp SQL store container created and upgraded automatically")
-
 	if err := db.createWhatsAppRelationships(); err != nil {
-		db.logger.Warn().Err(err).Msg("Failed to create WhatsApp relationships")
-
+		db.logger.Warn().
+			Str("operation", "create_relationships").
+			Err(err).
+			Msg("Failed to create WhatsApp relationships")
 	}
 
 	return container
@@ -124,33 +140,39 @@ func (db *DB) Transaction(fn func(*sql.Tx) error) error {
 }
 
 func (db *DB) OptimizeForWhatsApp() error {
-	db.logger.Info().Msg("Applying WhatsApp optimizations to PostgreSQL")
+	optimizeOp := db.logger.ForOperation("optimize")
+
+	optimizeOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "optimize", "starting"))
 
 	optimizations := []string{
-
 		"SET statement_timeout = '30s'",
 		"SET lock_timeout = '10s'",
 		"SET idle_in_transaction_session_timeout = '60s'",
-
 		"SET log_min_duration_statement = 1000",
 	}
 
 	for _, query := range optimizations {
 		if _, err := db.Exec(query); err != nil {
-			db.logger.Warn().Err(err).Str("query", query).Msg("Failed to apply optimization")
-
+			optimizeOp.Warn().
+				Err(err).
+				Str("query", query).
+				Msg("Failed to apply optimization")
 		}
 	}
 
-	db.logger.Info().Msg("WhatsApp optimizations applied")
+	optimizeOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "optimize", "success"))
 	return nil
 }
 
 func (db *DB) CreateIndexes() error {
-	db.logger.Info().Msg("Creating optimized indexes for application tables")
+	indexOp := db.logger.ForOperation("create_indexes")
+
+	indexOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "create_indexes", "starting"))
 
 	indexes := []string{
-
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_status_created ON sessions(status, created_at)",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_jid_status ON sessions(jid, status) WHERE jid IS NOT NULL",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity) WHERE last_activity IS NOT NULL",
@@ -160,17 +182,23 @@ func (db *DB) CreateIndexes() error {
 
 	for _, query := range indexes {
 		if _, err := db.Exec(query); err != nil {
-			db.logger.Warn().Err(err).Str("query", query).Msg("Failed to create index")
-
+			indexOp.Warn().
+				Err(err).
+				Str("query", query).
+				Msg("Failed to create index")
 		}
 	}
 
-	db.logger.Info().Msg("Application indexes created successfully")
+	indexOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "create_indexes", "success"))
 	return nil
 }
 
 func (db *DB) VerifySetup() error {
-	db.logger.Info().Msg("Verifying database setup")
+	verifyOp := db.logger.ForOperation("verify")
+
+	verifyOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "verify", "starting"))
 
 	var exists bool
 	query := `
@@ -192,17 +220,25 @@ func (db *DB) VerifySetup() error {
 		SELECT COUNT(*) FROM schema_migrations
 	`
 	if err := db.QueryRow(migrationQuery).Scan(&migrationCount); err != nil {
-		db.logger.Warn().Err(err).Msg("Could not check migration count (table may not exist yet)")
+		verifyOp.Warn().
+			Err(err).
+			Msg("Could not check migration count (table may not exist yet)")
 	} else {
-		db.logger.Info().Int("migrations_applied", migrationCount).Msg("Migration status")
+		verifyOp.Info().
+			Int("migrations_applied", migrationCount).
+			Msg("Migration status")
 	}
 
-	db.logger.Info().Msg("Database setup verification completed successfully")
+	verifyOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "verify", "success"))
 	return nil
 }
 
 func (db *DB) createWhatsAppRelationships() error {
-	db.logger.Info().Msg("Creating relationships between sessions and WhatsApp tables")
+	relOp := db.logger.ForOperation("create_relationships")
+
+	relOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "create_relationships", "starting"))
 
 	migrator := NewMigrator(db.DB)
 
@@ -214,11 +250,13 @@ func (db *DB) createWhatsAppRelationships() error {
 	relationshipMigrations := []int{3, 4, 5}
 	for _, version := range relationshipMigrations {
 		if !appliedVersions[version] {
-			db.logger.Info().Int("version", version).Msg("Applying WhatsApp relationship migration")
-
+			relOp.Info().
+				Int("version", version).
+				Msg("Applying WhatsApp relationship migration")
 		}
 	}
 
-	db.logger.Info().Msg("WhatsApp relationships setup completed")
+	relOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "create_relationships", "success"))
 	return nil
 }

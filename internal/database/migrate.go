@@ -21,13 +21,13 @@ type Migration struct {
 
 type Migrator struct {
 	db     *sql.DB
-	logger logger.Logger
+	logger *logger.ComponentLogger
 }
 
 func NewMigrator(db *sql.DB) *Migrator {
 	return &Migrator{
 		db:     db,
-		logger: logger.Get(),
+		logger: logger.ForComponent("database"),
 	}
 }
 
@@ -97,7 +97,10 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 		return migrations[i].Version < migrations[j].Version
 	})
 
-	m.logger.Info().Int("count", len(migrations)).Msg("Loaded migrations from SQL files")
+	m.logger.Info().
+		Str("operation", "load_migrations").
+		Int("count", len(migrations)).
+		Msg("Loaded migrations from SQL files")
 	return migrations, nil
 }
 
@@ -107,7 +110,10 @@ func (m *Migrator) getFallbackMigrations() []Migration {
 }
 
 func (m *Migrator) Run() error {
-	m.logger.Info().Msg("Starting database migrations")
+	migrateOp := m.logger.ForOperation("migrate")
+
+	migrateOp.Starting().
+		Msg(logger.GetStandardizedMessage("database", "migrate", "starting"))
 
 	if err := m.createMigrationsTable(); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
@@ -121,20 +127,30 @@ func (m *Migrator) Run() error {
 
 	for _, migration := range migrations {
 		if m.isApplied(migration.Version, appliedVersions) {
-			m.logger.Debug().Int("version", migration.Version).Msg("Migration already applied")
+			migrateOp.Debug().
+				Int("version", migration.Version).
+				Msg("Migration already applied")
 			continue
 		}
 
-		m.logger.Info().Int("version", migration.Version).Str("description", migration.Description).Msg("Applying migration")
+		migrateOp.Info().
+			Int("version", migration.Version).
+			Str("description", migration.Description).
+			Str("status", "applying").
+			Msg("Applying migration")
 
 		if err := m.applyMigration(migration); err != nil {
 			return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
 		}
 
-		m.logger.Info().Int("version", migration.Version).Msg("Migration applied successfully")
+		migrateOp.Info().
+			Int("version", migration.Version).
+			Str("status", "success").
+			Msg("Migration applied successfully")
 	}
 
-	m.logger.Info().Msg("All migrations completed successfully")
+	migrateOp.Success().
+		Msg(logger.GetStandardizedMessage("database", "migrate", "success"))
 	return nil
 }
 

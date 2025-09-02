@@ -20,12 +20,12 @@ type ProxyConfig struct {
 }
 
 type ProxyService struct {
-	logger logger.Logger
+	logger *logger.ComponentLogger
 }
 
 func NewProxyService() *ProxyService {
 	return &ProxyService{
-		logger: logger.GetWithSession("proxy_service"),
+		logger: logger.ForComponent("proxy"),
 	}
 }
 

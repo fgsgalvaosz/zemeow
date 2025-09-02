@@ -1,57 +1,84 @@
 package middleware
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
+	"github.com/felipe/zemeow/internal/logger"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 )
 
 type LoggingMiddleware struct {
-	logger zerolog.Logger
+	logger    *logger.ComponentLogger
+	headerKey string
 }
 
 func NewLoggingMiddleware() *LoggingMiddleware {
 	return &LoggingMiddleware{
-		logger: zerolog.New(nil).With().Str("component", "http_logger").Logger(),
+		logger:    logger.ForComponent("api"),
+		headerKey: "X-Request-ID",
 	}
 }
 
 func (m *LoggingMiddleware) Logger() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		start := time.Now()
+		// Generate request ID
+		requestID := m.generateRequestID()
+		c.Locals("request_id", requestID)
+		c.Set(m.headerKey, requestID)
 
+		// Extract session context
+		sessionID := m.extractSessionID(c)
+
+		// Create request logger with full context
+		reqLogger := logger.ForRequestContext("api", sessionID, requestID)
+		requestOp := reqLogger.ForOperation("request")
+
+		// Log request start
+		start := time.Now()
+		requestOp.Starting().
+			Str("method", c.Method()).
+			Str("path", c.Path()).
+			Str("ip", c.IP()).
+			Str("user_agent", c.Get("User-Agent")).
+			Msg(logger.GetStandardizedMessage("api", "request", "starting"))
+
+		// Process request
 		err := c.Next()
 
+		// Log request completion
 		duration := time.Since(start)
-
-		method := c.Method()
-		path := c.Path()
 		status := c.Response().StatusCode()
-		ip := c.IP()
-		userAgent := c.Get("User-Agent")
 
-		sessionID := ""
-		if authCtx := GetAuthContext(c); authCtx != nil {
-			sessionID = authCtx.SessionID
+		// Determine log level based on status
+		var logEvent *logger.OperationLogger
+		if status >= 400 {
+			logEvent = reqLogger.ForOperation("request")
+			if status >= 500 {
+				logEvent.Failed("SERVER_ERROR").
+					Str("method", c.Method()).
+					Str("path", c.Path()).
+					Int("status", status).
+					Dur("duration", duration).
+					Msg(logger.GetStandardizedMessage("api", "request", "failed"))
+			} else {
+				logEvent.Warn().
+					Str("method", c.Method()).
+					Str("path", c.Path()).
+					Int("status", status).
+					Dur("duration", duration).
+					Str("status_text", "client_error").
+					Msg("HTTP request completed with client error")
+			}
+		} else {
+			requestOp.Success().
+				Str("method", c.Method()).
+				Str("path", c.Path()).
+				Int("status", status).
+				Str("status_text", "success").
+				Msg(logger.GetStandardizedMessage("api", "request", "success"))
 		}
-
-		logEvent := m.logger.Info()
-		if status >= 400 && status < 500 {
-			logEvent = m.logger.Warn()
-		} else if status >= 500 {
-			logEvent = m.logger.Error()
-		}
-
-		logEvent.
-			Str("method", method).
-			Str("path", path).
-			Int("status", status).
-			Dur("duration", duration).
-			Str("ip", ip).
-			Str("user_agent", userAgent).
-			Str("session_id", sessionID).
-			Msg("HTTP request")
 
 		return err
 	}
@@ -59,37 +86,41 @@ func (m *LoggingMiddleware) Logger() fiber.Handler {
 
 func (m *LoggingMiddleware) RequestID() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-
-		requestID := generateRequestID()
+		// Check if request ID already exists
+		requestID := c.Get(m.headerKey)
+		if requestID == "" {
+			requestID = m.generateRequestID()
+		}
 
 		c.Locals("request_id", requestID)
-
-		c.Set("X-Request-ID", requestID)
+		c.Set(m.headerKey, requestID)
 
 		return c.Next()
 	}
 }
 
-func (m *LoggingMiddleware) LogWithRequestID(c *fiber.Ctx) zerolog.Logger {
+// generateRequestID creates a unique request identifier
+func (m *LoggingMiddleware) generateRequestID() string {
+	bytes := make([]byte, 8)
+	rand.Read(bytes)
+	return "req_" + hex.EncodeToString(bytes)
+}
+
+// extractSessionID extracts session ID from request context
+func (m *LoggingMiddleware) extractSessionID(c *fiber.Ctx) string {
+	if authCtx := GetAuthContext(c); authCtx != nil {
+		return authCtx.SessionID
+	}
+	return ""
+}
+
+func (m *LoggingMiddleware) LogWithRequestID(c *fiber.Ctx) *logger.RequestLogger {
 	requestID := ""
 	if id := c.Locals("request_id"); id != nil {
 		requestID = id.(string)
 	}
 
-	sessionID := ""
-	if authCtx := GetAuthContext(c); authCtx != nil {
-		sessionID = authCtx.SessionID
-	}
+	sessionID := m.extractSessionID(c)
 
-	return m.logger.With().
-		Str("request_id", requestID).
-		Str("session_id", sessionID).
-		Logger()
-}
-
-func generateRequestID() string {
-	return time.Now().Format("20060102150405") + "-" +
-		string(rune(time.Now().UnixNano()%26+65)) +
-		string(rune(time.Now().UnixNano()%26+65)) +
-		string(rune(time.Now().UnixNano()%26+65))
+	return logger.ForRequestContext("api", sessionID, requestID)
 }
