@@ -110,6 +110,8 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	}, "Message sent successfully")
 }
 
+// saveMediaToMinIO uploads media files to MinIO storage and returns media info
+// TODO: Currently unused - handled by PersistenceService. May be used for direct uploads in future
 func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, contentType string, data []byte, direction, chatJID, senderJID string) (*media.MediaInfo, error) {
 	if h.mediaService == nil {
 		h.logger.Warn().Msg("MediaService not available, skipping media upload")

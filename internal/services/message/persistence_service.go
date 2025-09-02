@@ -14,9 +14,9 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
+	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/models"
 	"github.com/felipe/zemeow/internal/repositories"
-	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/services/media"
 )
 
@@ -389,9 +389,7 @@ func (s *PersistenceService) processExtendedContextInfo(message *models.Message,
 
 	if len(contextInfo.MentionedJID) > 0 {
 		mentions := make([]string, len(contextInfo.MentionedJID))
-		for i, jid := range contextInfo.MentionedJID {
-			mentions[i] = jid
-		}
+		copy(mentions, contextInfo.MentionedJID)
 		message.Mentions = mentions
 	}
 

@@ -101,6 +101,8 @@ func (h *AuthHandler) ClearCache(c *fiber.Ctx) error {
 	})
 }
 
+// extractAPIKey extracts API key from various sources (Authorization header, X-API-Key header, or query parameter)
+// TODO: Currently unused, but may be needed for future authentication enhancements
 func (h *AuthHandler) extractAPIKey(c *fiber.Ctx) string {
 
 	authHeader := c.Get("Authorization")
