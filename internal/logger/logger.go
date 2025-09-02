@@ -2,9 +2,9 @@ package logger
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -45,7 +45,34 @@ func Init(level string, pretty bool) {
 	if pretty {
 		output = zerolog.ConsoleWriter{
 			Out:        os.Stdout,
-			TimeFormat: time.RFC3339,
+			TimeFormat: "15:04:05",
+			FormatLevel: func(i interface{}) string {
+				switch i {
+				case "trace":
+					return "\x1b[36mTRACE\x1b[0m" // Cyan
+				case "debug":
+					return "\x1b[35mDEBUG\x1b[0m" // Magenta
+				case "info":
+					return "\x1b[32mINFO \x1b[0m" // Green
+				case "warn":
+					return "\x1b[33mWARN \x1b[0m" // Yellow
+				case "error":
+					return "\x1b[31mERROR\x1b[0m" // Red
+				case "fatal":
+					return "\x1b[37;41mFATAL\x1b[0m" // White on Red
+				default:
+					return "\x1b[37m?????\x1b[0m"
+				}
+			},
+			FormatCaller: func(i interface{}) string {
+				return "\x1b[90m" + i.(string) + "\x1b[0m" // Dark gray
+			},
+			FormatFieldName: func(i interface{}) string {
+				return "\x1b[36m" + i.(string) + "\x1b[0m=" // Cyan
+			},
+			FormatFieldValue: func(i interface{}) string {
+				return "\x1b[37m" + fmt.Sprintf("%v", i) + "\x1b[0m" // White
+			},
 		}
 	}
 

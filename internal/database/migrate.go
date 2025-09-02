@@ -41,7 +41,7 @@ func (m *Migrator) GetMigrations() []Migration {
 }
 
 func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
-	migrationsDir := "internal/db/migrations"
+	migrationsDir := "internal/database/migrations"
 
 	files, err := filepath.Glob(filepath.Join(migrationsDir, "*_up.sql"))
 	if err != nil {
@@ -102,7 +102,7 @@ func (m *Migrator) loadMigrationsFromFiles() ([]Migration, error) {
 }
 
 func (m *Migrator) getFallbackMigrations() []Migration {
-	m.logger.Warn().Msg("No SQL migration files found - please ensure migration files exist in internal/db/migrations/")
+	m.logger.Warn().Msg("No SQL migration files found - please ensure migration files exist in internal/database/migrations/")
 	return []Migration{}
 }
 

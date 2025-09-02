@@ -55,8 +55,11 @@ type WhatsAppConfig struct {
 }
 
 type LoggingConfig struct {
-	Level  string
-	Pretty bool
+	Level   string
+	Pretty  bool
+	Color   bool
+	Console bool
+	Format  string
 }
 
 type WebhookConfig struct {
@@ -115,8 +118,11 @@ func Load() (*Config, error) {
 			QRCodeTimeout:     getEnvAsDuration("QR_CODE_TIMEOUT", 60*time.Second),
 		},
 		Logging: LoggingConfig{
-			Level:  getEnv("LOG_LEVEL", "info"),
-			Pretty: getEnvAsBool("LOG_PRETTY", true),
+			Level:   getEnv("LOG_LEVEL", "info"),
+			Pretty:  getEnvAsBool("LOG_PRETTY", true),
+			Color:   getEnvAsBool("LOG_COLOR", true),
+			Console: getEnvAsBool("LOG_CONSOLE", true),
+			Format:  getEnv("LOG_FORMAT", "console"),
 		},
 		Webhook: WebhookConfig{
 			URL:           getEnv("WEBHOOK_URL", ""),
