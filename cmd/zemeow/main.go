@@ -44,8 +44,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Inicializar logger com configurações do .env sem caller
-	logger.InitWithConfig(cfg.Logging.Level, cfg.Logging.Pretty, cfg.Logging.Color, false)
+	// Inicializar logger com configurações do .env mostrando caminho relativo
+	logger.InitWithConfig(cfg.Logging.Level, cfg.Logging.Pretty, cfg.Logging.Color, true)
 
 	dbConn, err := database.New(&cfg.Database)
 	if err != nil {
