@@ -2990,7 +2990,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria",
+                "description": "Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria\nInclui informações sobre os diferentes modos de payload suportados",
                 "consumes": [
                     "application/json"
                 ],
@@ -3003,7 +3003,7 @@ const docTemplate = `{
                 "summary": "Listar eventos de webhook",
                 "responses": {
                     "200": {
-                        "description": "Lista de eventos disponíveis",
+                        "description": "Lista de eventos disponíveis e modos de payload",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -3064,7 +3064,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Configura um novo webhook para uma sessão específica",
+                "description": "Configura um novo webhook para uma sessão específica com suporte a payload bruto\nModos de payload disponíveis:\n- \"processed\": Payload processado e simplificado (padrão)\n- \"raw\": Payload bruto da whatsmeow sem transformações\n- \"both\": Ambos os formatos enviados separadamente",
                 "consumes": [
                     "application/json"
                 ],
@@ -3929,6 +3929,16 @@ const docTemplate = `{
                         "receipt",
                         "presence"
                     ]
+                },
+                "payload_mode": {
+                    "description": "Modo do payload: \"processed\" | \"raw\" | \"both\"",
+                    "type": "string",
+                    "enum": [
+                        "processed",
+                        "raw",
+                        "both"
+                    ],
+                    "example": "processed"
                 },
                 "url": {
                     "type": "string",

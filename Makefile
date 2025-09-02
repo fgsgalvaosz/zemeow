@@ -4,8 +4,8 @@
 .PHONY: help dev prod build clean logs test docs swagger migrate
 
 # Variáveis
-DOCKER_COMPOSE_DEV = docker-compose -f docker-compose.dev.yml
-DOCKER_COMPOSE_PROD = docker-compose -f docker-compose.yml
+DOCKER_COMPOSE_DEV = docker compose -f docker-compose.dev.yml
+DOCKER_COMPOSE_PROD = docker compose -f docker-compose.yml
 GO_FILES = $(shell find . -name "*.go" -type f)
 
 # Cores para output

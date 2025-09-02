@@ -4,23 +4,23 @@ services:
   # PostgreSQL - Banco de dados principal
   postgres:
     image: postgres:15-alpine
-    container_name: zemeow_postgres_dev
+    container_name: zemeow_postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-zemeow_dev}
-      - POSTGRES_USER=${POSTGRES_USER:-zemeow_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-zemeow_password}
+      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - zemeow_dev_network
+      - zemeow_network
 
   # MinIO - Armazenamento de mídias
   minio:
     image: minio/minio:latest
-    container_name: zemeow_minio_dev
+    container_name: zemeow_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -30,26 +30,56 @@ services:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - minio_dev_data:/data
+      - minio_data:/data
     networks:
-      - zemeow_dev_network
+      - zemeow_network
+
+  # Opcional: DbGate para administração do banco
+  dbgate:
+    image: dbgate/dbgate:latest
+    container_name: zemeow_dbgate
+    restart: unless-stopped
+    environment:
+      CONNECTIONS: con1,con2
+      LABEL_con1: ZeMeow PostgreSQL
+      SERVER_con1: postgres
+      USER_con1: ${POSTGRES_USER:-postgres}
+      PASSWORD_con1: ${POSTGRES_PASSWORD:-password}
+      PORT_con1: 5432
+      ENGINE_con1: postgres@dbgate-plugin-postgres
+      
+      LABEL_con2: ZeMeow Redis
+      SERVER_con2: redis
+      USER_con2:
+      PASSWORD_con2:
+      PORT_con2: 6379
+      ENGINE_con2: redis@dbgate-plugin-redis
+    ports:
+      - "${DBGATE_PORT:-3000}:3000"
+    networks:
+      - zemeow_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # Redis - Cache e sessões
   redis:
     image: redis:7-alpine
-    container_name: zemeow_redis_dev
+    container_name: zemeow_redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_dev_data:/data
+      - redis_data:/data
     networks:
-      - zemeow_dev_network
+      - zemeow_network
 
 volumes:
-  postgres_dev_data:
-  minio_dev_data:
-  redis_dev_data:
+  postgres_data:
+  minio_data:
+  redis_data:
 
 networks:
-  zemeow_dev_network:
+  zemeow_network:

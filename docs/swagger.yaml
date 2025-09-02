@@ -570,6 +570,14 @@ definitions:
           type: string
         minItems: 1
         type: array
+      payload_mode:
+        description: 'Modo do payload: "processed" | "raw" | "both"'
+        enum:
+        - processed
+        - raw
+        - both
+        example: processed
+        type: string
       url:
         example: https://example.com/webhook
         type: string
@@ -2550,13 +2558,14 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retorna lista completa de todos os eventos de webhook disponíveis
-        organizados por categoria
+      description: |-
+        Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria
+        Inclui informações sobre os diferentes modos de payload suportados
       produces:
       - application/json
       responses:
         "200":
-          description: Lista de eventos disponíveis
+          description: Lista de eventos disponíveis e modos de payload
           schema:
             additionalProperties: true
             type: object
@@ -2598,7 +2607,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Configura um novo webhook para uma sessão específica
+      description: |-
+        Configura um novo webhook para uma sessão específica com suporte a payload bruto
+        Modos de payload disponíveis:
+        - "processed": Payload processado e simplificado (padrão)
+        - "raw": Payload bruto da whatsmeow sem transformações
+        - "both": Ambos os formatos enviados separadamente
       parameters:
       - description: ID da sessão
         in: path
