@@ -14,7 +14,7 @@ import (
 
 func TestMyClient_GetEventTypeName(t *testing.T) {
 	// Inicializar logger para teste
-	logger.Init("info", false)
+	logger.InitSimple("info", false)
 	
 	// Criar cliente de teste
 	sessionID := "test_session"
@@ -57,7 +57,7 @@ func TestMyClient_GetEventTypeName(t *testing.T) {
 
 func TestMyClient_SendWebhookEventRaw(t *testing.T) {
 	// Inicializar logger para teste
-	logger.Init("info", false)
+	logger.InitSimple("info", false)
 	
 	// Criar cliente de teste
 	sessionID := "test_session"
@@ -94,7 +94,7 @@ func TestMyClient_SendWebhookEventRaw(t *testing.T) {
 
 func TestMyClient_BasicProperties(t *testing.T) {
 	// Inicializar logger para teste
-	logger.Init("info", false)
+	logger.InitSimple("info", false)
 	
 	// Criar cliente de teste
 	sessionID := "test_session"

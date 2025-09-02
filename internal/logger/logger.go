@@ -97,18 +97,34 @@ func InitWithConfig(level string, pretty bool, color bool, includeCaller bool) {
 				}
 			},
 			FormatCaller: func(i interface{}) string {
-				// Extrai apenas o nome do arquivo sem o caminho completo
+				if !includeCaller {
+					// Retorna string vazia em vez de <nil>
+					return ""
+				}
+				// Extrai caminho relativo ao projeto
 				if str, ok := i.(string); ok {
 					// Separar arquivo:linha
 					parts := strings.Split(str, ":")
 					if len(parts) >= 2 {
-						// Pegar apenas o nome do arquivo
-						filename := filepath.Base(parts[0])
-						// Retornar formato filename:linha
-						if color {
-							return "\x1b[90m" + filename + ":" + parts[1] + "\x1b[0m" // Dark gray
+						// Obter caminho relativo ao workspace
+						filePath := parts[0]
+						// Procurar por "/zemeow/" e manter tudo após ele
+						if idx := strings.Index(filePath, "/zemeow/"); idx != -1 {
+							// Pegar tudo após "/zemeow/"
+							relativePath := filePath[idx+8:] // +8 para pular "/zemeow/"
+							if color {
+								return "\x1b[90m" + relativePath + ":" + parts[1] + "\x1b[0m" // Dark gray
+							} else {
+								return relativePath + ":" + parts[1]
+							}
 						} else {
-							return filename + ":" + parts[1]
+							// Fallback: apenas nome do arquivo
+							filename := filepath.Base(filePath)
+							if color {
+								return "\x1b[90m" + filename + ":" + parts[1] + "\x1b[0m" // Dark gray
+							} else {
+								return filename + ":" + parts[1]
+							}
 						}
 					}
 				}
@@ -175,7 +191,7 @@ func Get() Logger {
 
 func GetWithSession(sessionID string) Logger {
 	if globalLogger == nil {
-		Init("info", true)
+		InitSimple("info", true) // Usa versão sem caller
 	}
 	return &AppLogger{
 		logger: globalLogger.logger.With().Str("session_id", sessionID).Logger(),
@@ -192,7 +208,7 @@ type WhatsAppLoggerInterface interface {
 
 func GetWhatsAppLogger(module string) waLog.Logger {
 	if globalLogger == nil {
-		Init("info", true)
+		InitSimple("info", true) // Usa versão sem caller
 	}
 
 	return &WhatsAppLogger{
@@ -254,7 +270,7 @@ func (w *WhatsAppLogger) Sub(module string) waLog.Logger {
 
 func WithContext(ctx context.Context) Logger {
 	if globalLogger == nil {
-		Init("info", true)
+		InitSimple("info", true) // Usa versão sem caller
 	}
 	return &AppLogger{logger: globalLogger.logger.With().Ctx(ctx).Logger()}
 }
@@ -271,7 +287,7 @@ func FromContext(ctx context.Context) Logger {
 // ForComponent creates a new ComponentLogger with the specified component
 func ForComponent(component string) *ComponentLogger {
 	if globalLogger == nil {
-		Init("info", true)
+		InitSimple("info", true) // Usa versão sem caller
 	}
 	return &ComponentLogger{
 		logger:    globalLogger.logger.With().Str("component", component).Logger(),
@@ -391,7 +407,7 @@ func (ol *OperationLogger) Fatal() *zerolog.Event {
 // ForRequestContext creates a RequestLogger with complete request context
 func ForRequestContext(component, sessionID, requestID string) *RequestLogger {
 	if globalLogger == nil {
-		Init("info", true)
+		InitSimple("info", true) // Usa versão sem caller
 	}
 	return &RequestLogger{
 		logger: globalLogger.logger.With().
