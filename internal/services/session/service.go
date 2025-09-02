@@ -408,7 +408,3 @@ func generateAPIKey() string {
 	}
 	return "zmw_" + hex.EncodeToString(bytes)
 }
-
-func generateSessionID() string {
-	return uuid.New().String()
-}

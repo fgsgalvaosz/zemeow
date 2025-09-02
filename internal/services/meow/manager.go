@@ -503,73 +503,6 @@ func (m *WhatsAppManager) GetWebhookChannel() <-chan WebhookEvent {
 	return m.webhookChan
 }
 
-func (m *WhatsAppManager) handleQREvents(sessionName string, qrChan <-chan whatsmeow.QRChannelItem, client *MyClient) {
-	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error().Interface("panic", r).Str("session_name", sessionName).Msg("Panic in QR event handler")
-		}
-	}()
-
-	for evt := range qrChan {
-		m.logger.Info().Str("session_name", sessionName).Str("event", evt.Event).Msg("QR event received")
-
-		switch evt.Event {
-		case "code":
-			m.handleQRCodeEvent(sessionName, evt.Code)
-
-		case "timeout":
-			m.handleQRTimeoutEvent(sessionName, client)
-
-		case "success":
-			m.logger.Info().Str("session_name", sessionName).Msg("QR pairing successful! (handled by PairSuccess event)")
-
-		default:
-			m.logger.Info().Str("session_name", sessionName).Str("event", evt.Event).Msg("Unknown QR event")
-		}
-	}
-}
-
-func (m *WhatsAppManager) handleQRCodeEvent(sessionName, qrCode string) {
-	m.logger.Info().Str("session_name", sessionName).Msg("QR Code generated! Scan with WhatsApp:")
-	m.logger.Info().Str("session_name", sessionName).Str("qr_code", qrCode).Msg("QR Code data")
-
-	if err := m.displayQRInTerminal(qrCode, sessionName); err != nil {
-		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to display QR in terminal")
-	}
-}
-
-func (m *WhatsAppManager) handleQRTimeoutEvent(sessionName string, client *MyClient) {
-	m.logger.Warn().Str("session_name", sessionName).Msg("QR code timeout")
-
-	if err := m.repository.UpdateStatus(sessionName, models.SessionStatusDisconnected); err != nil {
-		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to update status on timeout")
-	}
-
-	if err := m.repository.ClearQRCode(sessionName); err != nil {
-		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to clear QR code on timeout")
-	}
-
-	client.Disconnect()
-}
-
-func (m *WhatsAppManager) displayQRInTerminal(qrCode, sessionName string) error {
-
-	fmt.Printf("\n=== QR CODE FOR SESSION %s ===\n", sessionName)
-	fmt.Println("Scan this QR code with your WhatsApp app:")
-	fmt.Println("1. Open WhatsApp on your phone")
-	fmt.Println("2. Go to Settings > Linked Devices")
-	fmt.Println("3. Tap 'Link a Device'")
-	fmt.Println("4. Scan the QR code below")
-	fmt.Println("=============================")
-
-	qrterminal.GenerateHalfBlock(qrCode, qrterminal.L, os.Stdout)
-	fmt.Printf("QR code: %s\n", qrCode)
-	fmt.Println("===============================")
-
-	m.logger.Info().Str("session_name", sessionName).Str("qr_data", qrCode).Msg("QR Code displayed in terminal")
-
-	return nil
-}
 
 func (m *WhatsAppManager) generateQRCodeBase64(qrText string) (string, error) {
 
@@ -606,29 +539,6 @@ func (m *WhatsAppManager) onPairSuccess(sessionName, jid string) {
 	}
 }
 
-func (m *WhatsAppManager) ensureJIDsUpdated() {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	for sessionID, client := range m.clients {
-		if client.IsConnected() && client.client.Store.ID != nil {
-
-			session, err := m.repository.GetByIdentifier(sessionID)
-			if err != nil {
-				continue
-			}
-
-			if session.JID == nil || *session.JID == "" {
-				jidStr := client.client.Store.ID.String()
-				if err := m.repository.UpdateJID(sessionID, &jidStr); err != nil {
-					m.logger.Error().Err(err).Str("session_id", sessionID).Str("jid", jidStr).Msg("Failed to update missing JID")
-				} else {
-					m.logger.Info().Str("session_id", sessionID).Str("jid", jidStr).Msg("Updated missing JID for connected session")
-				}
-			}
-		}
-	}
-}
 
 func (m *WhatsAppManager) reconnectOnStartup() {
 	m.logger.Info().Msg("Starting automatic reconnection of previously connected sessions")

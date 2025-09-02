@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -108,61 +107,6 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 		"timestamp":  response.Timestamp,
 		"recipient":  req.To,
 	}, "Message sent successfully")
-}
-
-// saveMediaToMinIO uploads media files to MinIO storage and returns media info
-// TODO: Currently unused - handled by PersistenceService. May be used for direct uploads in future
-func (h *MessageHandler) saveMediaToMinIO(sessionID, messageID, fileName, contentType string, data []byte, direction, chatJID, senderJID string) (*media.MediaInfo, error) {
-	if h.mediaService == nil {
-		h.logger.Warn().Msg("MediaService not available, skipping media upload")
-		return nil, nil
-	}
-
-	mediaPath := fmt.Sprintf("media/%s/%s/%s", direction, sessionID, messageID)
-	if fileName != "" {
-		mediaPath = fmt.Sprintf("%s/%s", mediaPath, fileName)
-	}
-
-	err := h.mediaService.UploadMedia(
-		context.Background(),
-		mediaPath,
-		bytes.NewReader(data),
-		int64(len(data)),
-		contentType,
-	)
-	if err != nil {
-		h.logger.Error().Err(err).
-			Str("session_id", sessionID).
-			Str("message_id", messageID).
-			Str("file_name", fileName).
-			Msg("Failed to upload media to MinIO")
-		return nil, err
-	}
-
-	mediaURL, err := h.mediaService.GetMediaURL(context.Background(), mediaPath)
-	if err != nil {
-		h.logger.Error().Err(err).
-			Str("session_id", sessionID).
-			Str("message_id", messageID).
-			Str("file_name", fileName).
-			Msg("Failed to generate media URL")
-		return nil, err
-	}
-
-	h.logger.Info().
-		Str("session_id", sessionID).
-		Str("message_id", messageID).
-		Str("minio_path", mediaPath).
-		Int64("size", int64(len(data))).
-		Msg("Media uploaded to MinIO successfully")
-
-	return &media.MediaInfo{
-		FileName:    fileName,
-		ContentType: contentType,
-		Size:        int64(len(data)),
-		Path:        mediaPath,
-		URL:         mediaURL,
-	}, nil
 }
 
 // @Summary Enviar mídia
@@ -649,10 +593,7 @@ func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
 	}
 
-	var messageIDs []types.MessageID
-	for _, msgID := range req.MessageID {
-		messageIDs = append(messageIDs, msgID)
-	}
+	messageIDs := append([]types.MessageID(nil), req.MessageID...)
 
 	err = client.MarkRead(messageIDs, time.Now(), recipient, recipient)
 	if err != nil {
@@ -1636,64 +1577,6 @@ func (h *MessageHandler) downloadMediaFromURL(url string) ([]byte, error) {
 	}
 
 	return data, nil
-}
-
-func (h *MessageHandler) sendMediaMessage(c *fiber.Ctx, sessionID string, req dto.SendMediaRequest) error {
-
-	if !utils.HasSessionAccess(c, sessionID) {
-		return utils.SendError(c, "Access denied", "ACCESS_DENIED", fiber.StatusForbidden)
-	}
-
-	if err := h.validateMediaRequest(&req); err != nil {
-		return utils.SendError(c, err.Error(), "VALIDATION_ERROR", fiber.StatusBadRequest)
-	}
-
-	client, err := h.getWhatsAppClient(sessionID)
-	if err != nil {
-		return utils.SendError(c, fmt.Sprintf("Failed to get WhatsApp client: %v", err), "INVALID_CLIENT", fiber.StatusInternalServerError)
-	}
-
-	recipient, err := h.parseJID(req.To)
-	if err != nil {
-		return utils.SendError(c, err.Error(), "INVALID_RECIPIENT", fiber.StatusBadRequest)
-	}
-
-	messageID := req.MessageID
-	if messageID == "" {
-		messageID = client.GenerateMessageID()
-	}
-
-	filedata, err := h.processMediaData(req.Media)
-	if err != nil {
-		return utils.SendError(c, fmt.Sprintf("Failed to process media: %v", err), "MEDIA_PROCESSING_FAILED", fiber.StatusBadRequest)
-	}
-
-	uploaded, err := client.Upload(context.Background(), filedata, whatsmeow.MediaType(req.Type))
-	if err != nil {
-		return utils.SendError(c, fmt.Sprintf("Failed to upload media: %v", err), "UPLOAD_FAILED", fiber.StatusInternalServerError)
-	}
-
-	msg, err := h.buildMediaMessage(req, filedata, uploaded)
-	if err != nil {
-		return utils.SendError(c, fmt.Sprintf("Failed to build message: %v", err), "MESSAGE_BUILD_FAILED", fiber.StatusInternalServerError)
-	}
-
-	if req.ContextInfo != nil {
-		h.addContextInfo(msg, req.ContextInfo)
-	}
-
-	response, err := client.SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: messageID})
-	if err != nil {
-		return utils.SendError(c, fmt.Sprintf("Failed to send message: %v", err), "SEND_FAILED", fiber.StatusInternalServerError)
-	}
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message_id": messageID,
-		"status":     "sent",
-		"timestamp":  response.Timestamp,
-		"recipient":  req.To,
-		"type":       req.Type,
-	})
 }
 
 func (h *MessageHandler) getWhatsAppClient(sessionID string) (*whatsmeow.Client, error) {

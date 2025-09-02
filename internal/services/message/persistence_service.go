@@ -555,13 +555,6 @@ func (s *PersistenceService) processMediaContent(sessionID uuid.UUID, evt *event
 			Msg("Failed to get media URL from MinIO")
 		return
 	}
-	if err != nil {
-		s.logger.Error().Err(err).
-			Str("message_id", evt.Info.ID).
-			Str("session_id", sessionID.String()).
-			Msg("Failed to upload media to MinIO")
-		return
-	}
 
 	err = s.messageRepo.UpdateMinIOReferences(
 		message.ID,
