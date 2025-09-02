@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   # PostgreSQL - Banco de dados principal
@@ -16,6 +16,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - zemeow_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-zemeow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # MinIO - Armazenamento de mídias
   minio:
@@ -75,6 +80,11 @@ services:
       - redis_data:/data
     networks:
       - zemeow_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

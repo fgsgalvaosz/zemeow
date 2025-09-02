@@ -149,3 +149,6 @@ grafana/
 dev/
 development/
 local/
+
+# wuzapi - pasta de referência
+wuzapi/
