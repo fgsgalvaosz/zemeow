@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -219,6 +220,14 @@ func (h *MediaHandler) DeleteMedia(c *fiber.Ctx) error {
 }
 
 func (h *MediaHandler) validateSessionPath(sessionID, path string) bool {
-	expectedPrefix := fmt.Sprintf("sessions/%s/", sessionID)
-	return len(path) > len(expectedPrefix) && path[:len(expectedPrefix)] == expectedPrefix
+	prefixes := []string{
+		fmt.Sprintf("media/incoming/%s/", sessionID),
+		fmt.Sprintf("media/outgoing/%s/", sessionID),
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(path, p) && len(path) > len(p) {
+			return true
+		}
+	}
+	return false
 }

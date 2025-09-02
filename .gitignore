@@ -50,7 +50,7 @@ Thumbs.db
 
 # Arquivos específicos do projeto
 files/
-media/
+# media/  # Allow committing created media
 uploads/
 qrcodes/
 
