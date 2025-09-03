@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/repositories"
 	"github.com/felipe/zemeow/internal/server"
-	"github.com/felipe/zemeow/internal/services/meow"
 	"github.com/felipe/zemeow/internal/services/session"
 	"github.com/felipe/zemeow/internal/services/webhook"
 	"github.com/joho/godotenv"
@@ -78,22 +78,22 @@ func main() {
 	sqlxDb := sqlx.NewDb(db.DB, "postgres")
 	messageRepo := repositories.NewMessageRepository(sqlxDb)
 
-	// Initialize services
+	// Initialize session manager with WhatsApp manager
+	sessionManager := session.NewManager(container, sessionRepo, messageRepo, cfg)
+	
+	// Initialize services with session manager
 	webhookService := webhook.NewWebhookService(sessionRepo, cfg)
-	sessionService := session.NewService(sessionRepo, nil) // Manager will be set later
-
-	// Initialize WhatsApp manager
-	meowManager := meow.NewWhatsAppManager(container, sessionRepo, messageRepo, cfg)
+	sessionService := session.NewService(sessionRepo, sessionManager) // Pass session manager to session service
 
 	// Start webhook service
 	webhookService.Start()
 	defer webhookService.Stop()
 
-	// Start meow manager
-	if err := meowManager.Start(); err != nil {
-		log.Fatalf("Failed to start WhatsApp manager: %v", err)
+	// Start session manager which will start WhatsApp manager
+	if err := sessionManager.Start(); err != nil {
+		log.Fatalf("Failed to start session manager: %v", err)
 	}
-	defer meowManager.Stop()
+	defer sessionManager.Shutdown(context.Background())
 
 	// Create and start server
 	server := api.NewServer(cfg, sessionRepo, sessionService, nil, webhookService, messageRepo)

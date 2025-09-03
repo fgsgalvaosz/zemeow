@@ -261,11 +261,18 @@ func (s *SessionService) DeleteSession(ctx context.Context, sessionID string) er
 
 func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) error {
 	s.logger.Info().Str("session_id", sessionID).Msg("Connecting session to WhatsApp")
+	
+	// Add nil check for manager
+	if s.manager == nil {
+		s.logger.Error().Msg("WhatsApp manager is nil - service not properly initialized")
+		return fmt.Errorf("WhatsApp manager not available - service not properly initialized")
+	}
 
 	if exists, _ := s.repository.Exists(sessionID); !exists {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
+	// Check if manager implements the correct interface with context
 	if manager, ok := s.manager.(interface {
 		ConnectSession(context.Context, string) error
 	}); ok {
@@ -274,8 +281,18 @@ func (s *SessionService) ConnectSession(ctx context.Context, sessionID string) e
 			return fmt.Errorf("failed to connect session: %w", err)
 		}
 	} else {
-		s.logger.Warn().Msg("WhatsApp manager not available for connection")
-		return fmt.Errorf("WhatsApp manager not available")
+		// Fallback to manager without context if needed
+		if manager, ok := s.manager.(interface {
+			ConnectSession(string) error
+		}); ok {
+			if err := manager.ConnectSession(sessionID); err != nil {
+				s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to connect session")
+				return fmt.Errorf("failed to connect session: %w", err)
+			}
+		} else {
+			s.logger.Warn().Msg("WhatsApp manager not available for connection")
+			return fmt.Errorf("WhatsApp manager not available")
+		}
 	}
 
 	s.logger.Info().Str("session_id", sessionID).Msg("Session connection initiated successfully")
