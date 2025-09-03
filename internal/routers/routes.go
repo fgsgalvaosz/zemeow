@@ -44,6 +44,8 @@ func (r *Router) setupSessionRoutes() {
 	r.setupMessageRoutes()
 
 	r.setupMediaRoutes()
+	
+	r.setupWebhookRoutes()
 }
 
 func (r *Router) setupGlobalSessionRoutes(sessions fiber.Router) {
@@ -135,6 +137,23 @@ func (r *Router) setupSessionOperationRoutes(sessions fiber.Router) {
 	sessionRoutes.Post("/:sessionId/proxy/test",
 		r.validationMiddleware.ValidateSessionAccess(),
 		r.sessionHandler.TestProxy,
+	)
+
+	// Webhook routes
+	sessionRoutes.Get("/:sessionId/webhooks/find",
+		r.validationMiddleware.ValidateSessionAccess(),
+		r.webhookHandler.FindWebhook,
+	)
+
+	sessionRoutes.Post("/:sessionId/webhooks/set",
+		r.validationMiddleware.ValidateSessionAccess(),
+		r.validationMiddleware.ValidateJSON(&dto.WebhookConfigRequest{}),
+		r.webhookHandler.SetWebhook,
+	)
+
+	sessionRoutes.Get("/:sessionId/webhooks/events",
+		r.validationMiddleware.ValidateSessionAccess(),
+		r.webhookHandler.GetWebhookEvents,
 	)
 
 	sessionRoutes.Post("/:sessionId/messages",
@@ -426,22 +445,8 @@ func (r *Router) setupMessageRoutes() {
 }
 
 func (r *Router) setupWebhookRoutes() {
-
-	webhooks := r.app.Group("/webhooks", r.authMiddleware.RequireGlobalAPIKey())
-
-	webhooks.Get("/sessions/:sessionId/find",
-		r.validationMiddleware.ValidateParams(),
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.webhookHandler.FindWebhook,
-	)
-
-	webhooks.Post("/sessions/:sessionId/set",
-		r.validationMiddleware.ValidateParams(),
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.webhookHandler.SetWebhook,
-	)
-
-	webhooks.Get("/events", r.webhookHandler.GetWebhookEvents)
+	// Webhook routes are now under the session scope
+	// /sessions/{sessionId}/webhooks/*
 }
 
 func (r *Router) setupMediaRoutes() {

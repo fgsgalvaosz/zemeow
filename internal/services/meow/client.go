@@ -22,9 +22,9 @@ type WebhookEvent struct {
 	Data         interface{} `json:"data"`
 	Timestamp    time.Time   `json:"timestamp"`
 	// Campos adicionais para suporte a payload bruto
-	RawEventData interface{} `json:"-"` // Dados originais do evento whatsmeow
-	PayloadMode  string      `json:"-"` // "processed" | "raw" | "both"
-	EventType    string      `json:"-"` // Tipo específico do evento (ex: "*events.Message")
+	RawEventData interface{} `json:"raw_event_data,omitempty"` // Dados originais do evento whatsmeow
+	PayloadMode  string      `json:"-"`                        // "processed" | "raw" | "both"
+	EventType    string      `json:"event_type,omitempty"`     // Tipo específico do evento (ex: "message", "receipt")
 }
 
 type QRCodeData struct {
@@ -98,6 +98,10 @@ func (c *MyClient) setupDefaultEventHandlers() {
 }
 
 func (c *MyClient) handleEvent(evt interface{}) {
+	// Send raw event first (zero serialization)
+	c.sendWebhookEventRaw(evt)
+	
+	// Then process for backward compatibility
 	switch v := evt.(type) {
 	case *events.Connected:
 		c.mu.Lock()
@@ -132,6 +136,12 @@ func (c *MyClient) handleEvent(evt interface{}) {
 
 		c.logger.Info().Msg("Disconnected from WhatsApp")
 		c.sendWebhookEvent("disconnected", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.LoggedOut:
+		c.logger.Info().Msg("Logged out from WhatsApp")
+		c.sendWebhookEvent("logged_out", map[string]interface{}{
 			"session_id": c.sessionID,
 			"timestamp":  time.Now().Unix(),
 		})
@@ -244,6 +254,13 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"chat":       v.Info.Chat.String(),
 			"timestamp":  v.Info.Timestamp.Unix(),
 		})
+	case *events.DeleteForMe:
+		c.logger.Info().Str("message_id", v.MessageID).Msg("Message deleted for me")
+		c.sendWebhookEvent("delete_for_me", map[string]interface{}{
+			"session_id": c.sessionID,
+			"message_id": v.MessageID,
+			"timestamp":  v.Timestamp.Unix(),
+		})
 	case *events.GroupInfo:
 		c.logger.Info().Str("group", v.JID.String()).Msg("Group info updated")
 		c.sendWebhookEvent("group_info", map[string]interface{}{
@@ -268,34 +285,69 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"picture_id": v.PictureID,
 			"timestamp":  time.Now().Unix(),
 		})
-	case *events.CallOffer:
-		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call offer received")
-		c.sendWebhookEvent("call_offer", map[string]interface{}{
+	case *events.CallOfferNotice:
+		c.logger.Info().Str("from", v.From.String()).Str("call_id", v.CallID).Msg("Call offer notice")
+		c.sendWebhookEvent("call_offer_notice", map[string]interface{}{
 			"session_id": c.sessionID,
-			"call_id":    v.BasicCallMeta.CallID,
-			"from":       v.BasicCallMeta.From.String(),
-			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
-		})
-	case *events.CallAccept:
-		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call accepted")
-		c.sendWebhookEvent("call_accept", map[string]interface{}{
-			"session_id": c.sessionID,
-			"call_id":    v.BasicCallMeta.CallID,
-			"from":       v.BasicCallMeta.From.String(),
-			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
+			"call_id":    v.CallID,
+			"from":       v.From.String(),
+			"timestamp":  v.Timestamp.Unix(),
 		})
 	case *events.CallTerminate:
-		c.logger.Info().Str("from", v.BasicCallMeta.From.String()).Str("call_id", v.BasicCallMeta.CallID).Msg("Call terminated")
+		c.logger.Info().Str("from", v.From.String()).Str("call_id", v.CallID).Msg("Call terminated")
 		c.sendWebhookEvent("call_terminate", map[string]interface{}{
 			"session_id": c.sessionID,
-			"call_id":    v.BasicCallMeta.CallID,
-			"from":       v.BasicCallMeta.From.String(),
-			"timestamp":  v.BasicCallMeta.Timestamp.Unix(),
+			"call_id":    v.CallID,
+			"from":       v.From.String(),
 			"reason":     v.Reason,
+			"timestamp":  v.Timestamp.Unix(),
+		})
+	case *events.Contact:
+		c.logger.Info().Str("jid", v.JID.String()).Msg("Contact updated")
+		c.sendWebhookEvent("contact", map[string]interface{}{
+			"session_id": c.sessionID,
+			"jid":        v.JID.String(),
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.BlocklistChange:
+		c.logger.Info().Msg("Blocklist changed")
+		c.sendWebhookEvent("blocklist", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
 		})
 	case *events.AppState:
 		c.logger.Debug().Msg("App state sync")
 		c.sendWebhookEvent("app_state", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.AppStateSyncComplete:
+		c.logger.Info().Msg("App state sync complete")
+		c.sendWebhookEvent("app_state_sync_complete", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.KeepAliveTimeout:
+		c.logger.Warn().Msg("Keep alive timeout")
+		c.sendWebhookEvent("keepalive_timeout", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.KeepAliveRestored:
+		c.logger.Info().Msg("Keep alive restored")
+		c.sendWebhookEvent("keepalive_restored", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.NewsletterJoin:
+		c.logger.Info().Msg("Joined newsletter")
+		c.sendWebhookEvent("newsletter_join", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.NewsletterLeave:
+		c.logger.Info().Msg("Left newsletter")
+		c.sendWebhookEvent("newsletter_leave", map[string]interface{}{
 			"session_id": c.sessionID,
 			"timestamp":  time.Now().Unix(),
 		})
@@ -306,7 +358,54 @@ func (c *MyClient) handleEvent(evt interface{}) {
 			"conversations": len(v.Data.Conversations),
 			"timestamp":     time.Now().Unix(),
 		})
-
+	case *events.OfflineSyncPreview:
+		c.logger.Info().Msg("Offline sync preview")
+		c.sendWebhookEvent("offline_sync_preview", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.OfflineSyncCompleted:
+		c.logger.Info().Msg("Offline sync completed")
+		c.sendWebhookEvent("offline_sync_completed", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.TemporaryBan:
+		c.logger.Warn().Msg("Temporary ban")
+		c.sendWebhookEvent("temporary_ban", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.ClientOutdated:
+		c.logger.Error().Msg("Client outdated")
+		c.sendWebhookEvent("client_outdated", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.CATRefreshError:
+		c.logger.Error().Msg("CAT refresh error")
+		c.sendWebhookEvent("cat_refresh_error", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.StreamReplaced:
+		c.logger.Warn().Msg("Stream replaced")
+		c.sendWebhookEvent("stream_replaced", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.PermanentDisconnect:
+		c.logger.Error().Msg("Permanent disconnect")
+		c.sendWebhookEvent("permanent_disconnect", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
+	case *events.ManualLoginReconnect:
+		c.logger.Info().Msg("Manual login reconnect")
+		c.sendWebhookEvent("manual_login_reconnect", map[string]interface{}{
+			"session_id": c.sessionID,
+			"timestamp":  time.Now().Unix(),
+		})
 	}
 }
 
@@ -420,67 +519,172 @@ func (c *MyClient) Logout() error {
 }
 
 // sendWebhookEventRaw envia evento com payload bruto da whatsmeow
-func (c *MyClient) sendWebhookEventRaw(evt interface{}, eventType string) {
+func (c *MyClient) sendWebhookEventRaw(evt interface{}) {
 	if c.webhookChan == nil {
 		return
 	}
 
+	eventType := c.getEventTypeName(evt)
+	
+	// Send to webhook channel with raw data
 	webhookEvent := WebhookEvent{
 		SessionID:    c.sessionID,
-		Event:        eventType,
-		Data:         nil, // Data será nil para payload raw
+		Event:        "raw_event",
+		Data:         nil, // Data will be in RawEventData
 		Timestamp:    time.Now(),
 		RawEventData: evt,
 		PayloadMode:  "raw",
-		EventType:    c.getEventTypeName(evt),
+		EventType:    eventType,
 	}
 
 	select {
 	case c.webhookChan <- webhookEvent:
-		c.logger.Debug().Str("event", eventType).Str("event_type", webhookEvent.EventType).Msg("Raw webhook event sent")
+		c.logger.Debug().Str("event_type", eventType).Msg("Raw webhook event sent")
 	default:
-		c.logger.Warn().Str("event", eventType).Msg("Webhook channel full, raw event dropped")
+		c.logger.Warn().Str("event_type", eventType).Msg("Webhook channel full, raw event dropped")
 	}
 }
 
-// getEventTypeName retorna o nome do tipo do evento para identificação
+// getEventTypeName returns the name of the event type for identification
 func (c *MyClient) getEventTypeName(evt interface{}) string {
 	switch evt.(type) {
-	case *events.Message:
-		return "*events.Message"
-	case *events.Receipt:
-		return "*events.Receipt"
 	case *events.Connected:
-		return "*events.Connected"
+		return "connected"
 	case *events.Disconnected:
-		return "*events.Disconnected"
-	case *events.QR:
-		return "*events.QR"
-	case *events.PairSuccess:
-		return "*events.PairSuccess"
-	case *events.StreamError:
-		return "*events.StreamError"
+		return "disconnected"
+	case *events.LoggedOut:
+		return "logged_out"
 	case *events.ConnectFailure:
-		return "*events.ConnectFailure"
-	case *events.Presence:
-		return "*events.Presence"
-	case *events.ChatPresence:
-		return "*events.ChatPresence"
+		return "connect_failure"
+	case *events.Message:
+		return "message"
+	case *events.Receipt:
+		return "receipt"
 	case *events.UndecryptableMessage:
-		return "*events.UndecryptableMessage"
-	case *events.GroupInfo:
-		return "*events.GroupInfo"
-	case *events.CallOffer:
-		return "*events.CallOffer"
-	case *events.CallAccept:
-		return "*events.CallAccept"
-	case *events.CallTerminate:
-		return "*events.CallTerminate"
-	case *events.AppState:
-		return "*events.AppState"
+		return "undecryptable_message"
+	case *events.DeleteForMe:
+		return "delete_for_me"
 	case *events.HistorySync:
-		return "*events.HistorySync"
+		return "history_sync"
+	case *events.OfflineSyncPreview:
+		return "offline_sync_preview"
+	case *events.OfflineSyncCompleted:
+		return "offline_sync_completed"
+	case *events.Presence:
+		return "presence"
+	case *events.ChatPresence:
+		return "chat_presence"
+	case *events.QR:
+		return "qr"
+	case *events.QRScannedWithoutMultidevice:
+		return "qr_scanned_without_multidevice"
+	case *events.JoinedGroup:
+		return "joined_group"
+	case *events.GroupInfo:
+		return "group_info"
+	case *events.CallOffer:
+		return "call_offer"
+	case *events.CallOfferNotice:
+		return "call_offer_notice"
+	case *events.CallAccept:
+		return "call_accept"
+	case *events.CallPreAccept:
+		return "call_pre_accept"
+	case *events.CallReject:
+		return "call_reject"
+	case *events.CallTerminate:
+		return "call_terminate"
+	case *events.CallTransport:
+		return "call_transport"
+	case *events.CallRelayLatency:
+		return "call_relay_latency"
+	case *events.UnknownCallEvent:
+		return "unknown_call_event"
+	case *events.Contact:
+		return "contact"
+	case *events.Picture:
+		return "picture"
+	case *events.BlocklistChange:
+		return "blocklist"
+	case *events.BlocklistChangeAction:
+		return "blocklist_change"
+	case *events.BusinessName:
+		return "business_name"
+	case *events.UserAbout:
+		return "user_about"
+	case *events.UserStatusMute:
+		return "user_status_mute"
+	case *events.PushName:
+		return "push_name"
+	case *events.Archive:
+		return "archive"
+	case *events.Pin:
+		return "pin"
+	case *events.Mute:
+		return "mute"
+	case *events.ClearChat:
+		return "clear_chat"
+	case *events.DeleteChat:
+		return "delete_chat"
+	case *events.MarkChatAsRead:
+		return "mark_chat_as_read"
+	case *events.AppState:
+		return "app_state"
+	case *events.AppStateSyncComplete:
+		return "app_state_sync_complete"
+	case *events.KeepAliveTimeout:
+		return "keepalive_timeout"
+	case *events.KeepAliveRestored:
+		return "keepalive_restored"
+	case *events.NewsletterJoin:
+		return "newsletter_join"
+	case *events.NewsletterLeave:
+		return "newsletter_leave"
+	case *events.NewsletterMuteChange:
+		return "newsletter_mute_change"
+	case *events.NewsletterLiveUpdate:
+		return "newsletter_live_update"
+	case *events.NewsletterMessageMeta:
+		return "newsletter_message_meta"
+	case *events.FBMessage:
+		return "fb_message"
+	case *events.Star:
+		return "star"
+	case *events.TemporaryBan:
+		return "temporary_ban"
+	case *events.ClientOutdated:
+		return "client_outdated"
+	case *events.CATRefreshError:
+		return "cat_refresh_error"
+	case *events.StreamError:
+		return "stream_error"
+	case *events.StreamReplaced:
+		return "stream_replaced"
+	case *events.PermanentDisconnect:
+		return "permanent_disconnect"
+	case *events.ManualLoginReconnect:
+		return "manual_login_reconnect"
+	case *events.PrivacySettings:
+		return "privacy_settings"
+	case *events.UnarchiveChatsSetting:
+		return "unarchive_chats_setting"
+	case *events.PushNameSetting:
+		return "push_name_setting"
+	case *events.IdentityChange:
+		return "identity_change"
+	case *events.LabelEdit:
+		return "label_edit"
+	case *events.LabelAssociationChat:
+		return "label_association_chat"
+	case *events.LabelAssociationMessage:
+		return "label_association_message"
+	case *events.MediaRetry:
+		return "media_retry"
+	case *events.MediaRetryError:
+		return "media_retry_error"
+	case *events.DecryptFailMode:
+		return "decrypt_fail_mode"
 	default:
-		return fmt.Sprintf("%T", evt)
+		return "unknown"
 	}
 }

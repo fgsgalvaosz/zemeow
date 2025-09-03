@@ -129,9 +129,13 @@ docs: swagger ## Alias para swagger
 
 swagger: ## Regenera documentação Swagger
 	@echo "$(GREEN)📚 Regenerando documentação Swagger...$(NC)"
-	/go/bin/swag init -g cmd/zemeow/main.go -o docs
+	@# Read port from .env file or default to 8080
+	@PORT=$$(grep SERVER_PORT .env | cut -d '=' -f2 || echo "8080")
+	@HOST=localhost
+	@echo "$(GREEN)📝 Usando host: $$HOST:$$PORT$(NC)"
+	@$$HOME/go/bin/swag init -g cmd/zemeow/main.go -o docs
 	@echo "$(GREEN)✅ Documentação atualizada em: docs/$(NC)"
-	@echo "$(YELLOW)💡 Acesse: http://localhost:8080/swagger/index.html$(NC)"
+	@echo "$(YELLOW)💡 Acesse: http://$$HOST:$$PORT/swagger/index.html$(NC)"
 
 ## 🔍 Monitoramento
 status: ## Mostra status dos serviços

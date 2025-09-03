@@ -210,8 +210,11 @@ func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
 	}
 
 	if !s.isEventEnabled(event.Event, session.WebhookEvents) {
-		s.logger.Debug().Str("session_id", event.SessionID).Str("event", event.Event).Msg("Event not enabled for webhook")
-		return nil
+		// Also check with the raw event type if available
+		if event.EventType != "" && !s.isEventEnabled(event.EventType, session.WebhookEvents) {
+			s.logger.Debug().Str("session_id", event.SessionID).Str("event", event.Event).Str("event_type", event.EventType).Msg("Event not enabled for webhook")
+			return nil
+		}
 	}
 
 	// Determinar modo de payload (padrão: processed)

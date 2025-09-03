@@ -585,7 +585,7 @@ definitions:
     - events
     - url
     type: object
-host: localhost:3000
+host: localhost:8080
 info:
   contact:
     email: support@swagger.io
@@ -2366,6 +2366,110 @@ paths:
       summary: Obter status da sessão
       tags:
       - sessions
+  /sessions/{sessionId}/webhooks/events:
+    get:
+      consumes:
+      - application/json
+      description: Retorna lista completa de todos os eventos de webhook disponíveis
+        por categoria
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de eventos disponíveis
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Lista eventos disponíveis para webhook
+      tags:
+      - webhooks
+  /sessions/{sessionId}/webhooks/find:
+    get:
+      consumes:
+      - application/json
+      description: Retorna lista de webhooks configurados para uma sessão específica
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de webhooks configurados
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Buscar webhooks configurados
+      tags:
+      - webhooks
+  /sessions/{sessionId}/webhooks/set:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Configura um novo webhook para uma sessão específica com suporte a payload bruto
+        Modos de payload disponíveis:
+        - "processed": Payload processado e simplificado (padrão)
+        - "raw": Payload bruto da whatsmeow sem transformações
+        - "both": Ambos os formatos enviados separadamente
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Configuração do webhook
+        in: body
+        name: webhook
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WebhookConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Webhook configurado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Configurar webhook
+      tags:
+      - webhooks
   /sessions/active:
     get:
       consumes:
@@ -2428,100 +2532,6 @@ paths:
       summary: Criar nova sessão WhatsApp
       tags:
       - sessions
-  /webhooks/events:
-    get:
-      consumes:
-      - application/json
-      description: |-
-        Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria
-        Inclui informações sobre os diferentes modos de payload suportados
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Lista de eventos disponíveis e modos de payload
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Listar eventos de webhook
-      tags:
-      - webhooks
-  /webhooks/sessions/{sessionId}/find:
-    get:
-      consumes:
-      - application/json
-      description: Retorna lista de webhooks configurados para uma sessão específica
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Lista de webhooks configurados
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Buscar webhooks configurados
-      tags:
-      - webhooks
-  /webhooks/sessions/{sessionId}/set:
-    post:
-      consumes:
-      - application/json
-      description: |-
-        Configura um novo webhook para uma sessão específica com suporte a payload bruto
-        Modos de payload disponíveis:
-        - "processed": Payload processado e simplificado (padrão)
-        - "raw": Payload bruto da whatsmeow sem transformações
-        - "both": Ambos os formatos enviados separadamente
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Configuração do webhook
-        in: body
-        name: webhook
-        required: true
-        schema:
-          $ref: '#/definitions/dto.WebhookConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Webhook configurado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Configurar webhook
-      tags:
-      - webhooks
 securityDefinitions:
   ApiKeyAuth:
     description: Bearer token ou API key para autenticação na API. Pode ser fornecido

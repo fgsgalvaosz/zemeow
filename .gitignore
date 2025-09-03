@@ -152,3 +152,6 @@ local/
 
 # referencia - pasta de referência (antigo wuzapi)
 referencia/
+
+# Arquivos do Qoder
+.qoder/

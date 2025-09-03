@@ -2792,14 +2792,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/webhooks/events": {
+        "/sessions/{sessionId}/webhooks/events": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Retorna lista completa de todos os eventos de webhook disponíveis organizados por categoria\nInclui informações sobre os diferentes modos de payload suportados",
+                "description": "Retorna lista completa de todos os eventos de webhook disponíveis por categoria",
                 "consumes": [
                     "application/json"
                 ],
@@ -2809,10 +2809,26 @@ const docTemplate = `{
                 "tags": [
                     "webhooks"
                 ],
-                "summary": "Listar eventos de webhook",
+                "summary": "Lista eventos disponíveis para webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da sessão",
+                        "name": "sessionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Lista de eventos disponíveis e modos de payload",
+                        "description": "Lista de eventos disponíveis",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -2821,7 +2837,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/webhooks/sessions/{sessionId}/find": {
+        "/sessions/{sessionId}/webhooks/find": {
             "get": {
                 "security": [
                     {
@@ -2866,7 +2882,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/webhooks/sessions/{sessionId}/set": {
+        "/sessions/{sessionId}/webhooks/set": {
             "post": {
                 "security": [
                     {
@@ -3769,7 +3785,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0.0",
-	Host:             "localhost:3000",
+	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "ZeMeow WhatsApp API",

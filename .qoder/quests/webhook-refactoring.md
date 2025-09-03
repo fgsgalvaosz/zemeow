@@ -469,105 +469,408 @@ func (s *WebhookService) createMinimalEventMetadata(session *models.Session) Eve
 }
 ```
 
-### 5. Configuração Simplificada
+### 5. Estrutura de Banco de Dados Simplificada
+
+```sql
+-- Tabela webhooks separada para configurações
+CREATE TABLE webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id VARCHAR(255) NOT NULL UNIQUE,
+    webhook_url TEXT NOT NULL,
+    events TEXT[] NOT NULL, -- Array de eventos habilitados
+    raw_mode BOOLEAN NOT NULL DEFAULT true, -- true = native_raw, false = processed
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Índices para performance
+    CONSTRAINT fk_webhooks_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+-- Índice para busca rápida por session_id
+CREATE INDEX idx_webhooks_session_id ON webhooks(session_id);
+
+-- Trigger para atualizar updated_at automaticamente
+CREATE OR REPLACE FUNCTION update_webhook_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER trigger_update_webhook_updated_at
+    BEFORE UPDATE ON webhooks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_webhook_updated_at();
+```
+
+### 6. Modelo Go para Webhook
 
 ```go
-type WebhookConfiguration struct {
-    URL              string   `json:"url"`
-    Active           bool     `json:"active"`
-    PayloadMode      string   `json:"payload_mode"` // "native_raw", "processed", "both"
-    EnabledEvents    []string `json:"enabled_events"`
-    EnabledCategories []string `json:"enabled_categories"`
+type Webhook struct {
+    ID         uuid.UUID         `json:"id" db:"id"`
+    SessionID  string            `json:"session_id" db:"session_id"`
+    WebhookURL string            `json:"webhook_url" db:"webhook_url"`
+    Events     pq.StringArray    `json:"events" db:"events"`
+    RawMode    bool              `json:"raw_mode" db:"raw_mode"`
+    CreatedAt  time.Time         `json:"created_at" db:"created_at"`
+    UpdatedAt  time.Time         `json:"updated_at" db:"updated_at"`
 }
 
-// Modos de payload disponíveis
-const (
-    PayloadModeNativeRaw = "native_raw"  // Estrutura exata da whatsmeow
-    PayloadModeProcessed = "processed"    // Formato legado processado
-    PayloadModeBoth      = "both"         // Ambos os formatos
-)
+// WebhookRepository interface
+type WebhookRepository interface {
+    Create(webhook *Webhook) error
+    GetBySessionID(sessionID string) (*Webhook, error)
+    Update(webhook *Webhook) error
+    Delete(sessionID string) error
+    Exists(sessionID string) (bool, error)
+}
 
-// Configuração de retry permanece a mesma do sistema atual
-type RetryConfiguration struct {
-    MaxRetries      int           `json:"max_retries"`
-    BackoffStrategy string        `json:"backoff_strategy"`
-    BaseDelay       time.Duration `json:"base_delay"`
-    MaxDelay        time.Duration `json:"max_delay"`
-    JitterEnabled   bool          `json:"jitter_enabled"`
+// WebhookCreateRequest DTO
+type WebhookCreateRequest struct {
+    WebhookURL string   `json:"webhook_url" validate:"required,url"`
+    Events     []string `json:"events" validate:"required,min=1"`
+    RawMode    bool     `json:"raw_mode"`
 }
 ```
 
-## Fluxo de Dados Direto
+### 7. Implementação do Repository
+
+```go
+type webhookRepository struct {
+    db     *sqlx.DB
+    logger logger.Logger
+}
+
+func NewWebhookRepository(db *sqlx.DB) WebhookRepository {
+    return &webhookRepository{
+        db:     db,
+        logger: logger.GetWithSession("webhook_repository"),
+    }
+}
+
+func (r *webhookRepository) Create(webhook *Webhook) error {
+    query := `
+        INSERT INTO webhooks (session_id, webhook_url, events, raw_mode)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, created_at, updated_at`
+    
+    err := r.db.QueryRow(query, webhook.SessionID, webhook.WebhookURL, 
+                        pq.Array(webhook.Events), webhook.RawMode).
+                        Scan(&webhook.ID, &webhook.CreatedAt, &webhook.UpdatedAt)
+    
+    if err != nil {
+        r.logger.Error().Err(err).Str("session_id", webhook.SessionID).Msg("Failed to create webhook")
+        return fmt.Errorf("failed to create webhook: %w", err)
+    }
+    
+    r.logger.Info().Str("webhook_id", webhook.ID.String()).Str("session_id", webhook.SessionID).Msg("Webhook created successfully")
+    return nil
+}
+
+func (r *webhookRepository) GetBySessionID(sessionID string) (*Webhook, error) {
+    webhook := &Webhook{}
+    query := `
+        SELECT id, session_id, webhook_url, events, raw_mode, created_at, updated_at
+        FROM webhooks 
+        WHERE session_id = $1`
+    
+    err := r.db.Get(webhook, query, sessionID)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return nil, nil // Não encontrado
+        }
+        r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get webhook")
+        return nil, fmt.Errorf("failed to get webhook: %w", err)
+    }
+    
+    return webhook, nil
+}
+
+func (r *webhookRepository) Update(webhook *Webhook) error {
+    query := `
+        UPDATE webhooks 
+        SET webhook_url = $2, events = $3, raw_mode = $4, updated_at = NOW()
+        WHERE session_id = $1
+        RETURNING updated_at`
+    
+    err := r.db.QueryRow(query, webhook.SessionID, webhook.WebhookURL,
+                        pq.Array(webhook.Events), webhook.RawMode).
+                        Scan(&webhook.UpdatedAt)
+    
+    if err != nil {
+        r.logger.Error().Err(err).Str("session_id", webhook.SessionID).Msg("Failed to update webhook")
+        return fmt.Errorf("failed to update webhook: %w", err)
+    }
+    
+    r.logger.Info().Str("session_id", webhook.SessionID).Msg("Webhook updated successfully")
+    return nil
+}
+
+func (r *webhookRepository) Delete(sessionID string) error {
+    query := `DELETE FROM webhooks WHERE session_id = $1`
+    
+    result, err := r.db.Exec(query, sessionID)
+    if err != nil {
+        r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to delete webhook")
+        return fmt.Errorf("failed to delete webhook: %w", err)
+    }
+    
+    rowsAffected, _ := result.RowsAffected()
+    if rowsAffected == 0 {
+        return fmt.Errorf("webhook not found for session: %s", sessionID)
+    }
+    
+    r.logger.Info().Str("session_id", sessionID).Msg("Webhook deleted successfully")
+    return nil
+}
+
+func (r *webhookRepository) Exists(sessionID string) (bool, error) {
+    var count int
+    query := `SELECT COUNT(*) FROM webhooks WHERE session_id = $1`
+    
+    err := r.db.Get(&count, query, sessionID)
+    if err != nil {
+        r.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to check webhook existence")
+        return false, fmt.Errorf("failed to check webhook existence: %w", err)
+    }
+    
+    return count > 0, nil
+}
+```
+
+### 8. Handler Simplificado
+
+```go
+type WebhookHandler struct {
+    logger           logger.Logger
+    webhookRepo      WebhookRepository
+    sessionRepo      repositories.SessionRepository
+    eventRegistry    *EventRegistry
+}
+
+func NewWebhookHandler(webhookRepo WebhookRepository, sessionRepo repositories.SessionRepository, eventRegistry *EventRegistry) *WebhookHandler {
+    return &WebhookHandler{
+        logger:        logger.GetWithSession("webhook_handler"),
+        webhookRepo:   webhookRepo,
+        sessionRepo:   sessionRepo,
+        eventRegistry: eventRegistry,
+    }
+}
+
+// @Summary Listar eventos disponíveis
+// @Description Retorna todos os eventos disponíveis para configuração de webhooks
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Lista de eventos disponíveis"
+// @Router /sessions/{sessionId}/webhooks/events [get]
+func (h *WebhookHandler) GetAvailableEvents(c *fiber.Ctx) error {
+    sessionID := c.Params("sessionId")
+    
+    if !utils.HasSessionAccess(c, sessionID) {
+        return utils.SendAccessDeniedError(c)
+    }
+    
+    events := h.eventRegistry.GetAllEvents()
+    categories := h.eventRegistry.GetCategories()
+    
+    return utils.SendSuccess(c, fiber.Map{
+        "events": events,
+        "categories": categories,
+        "payload_modes": fiber.Map{
+            "native_raw": fiber.Map{
+                "description": "Payload nativo idêntico à estrutura whatsmeow",
+                "format": "Estrutura original exata sem qualquer modificação",
+                "compatibility": "100% idêntico à whatsmeow",
+                "serialization": "JSON automático do Go sem interferência manual",
+            },
+            "processed": fiber.Map{
+                "description": "Payload processado (modo legado)",
+                "format": "Estrutura customizada simplificada",
+                "compatibility": "Compatibilidade com versões anteriores",
+            },
+        },
+        "total_events": len(events),
+        "total_categories": len(categories),
+    })
+}
+
+// @Summary Configurar webhook
+// @Description Configura webhook para uma sessão
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Param request body WebhookCreateRequest true "Configuração do webhook"
+// @Success 200 {object} map[string]interface{} "Webhook configurado com sucesso"
+// @Router /sessions/{sessionId}/webhooks/set [post]
+func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
+    sessionID := c.Params("sessionId")
+    
+    if !utils.HasSessionAccess(c, sessionID) {
+        return utils.SendAccessDeniedError(c)
+    }
+    
+    var req WebhookCreateRequest
+    if err := c.BodyParser(&req); err != nil {
+        return utils.SendInvalidJSONError(c)
+    }
+    
+    // Validar eventos
+    for _, event := range req.Events {
+        if !h.eventRegistry.IsSupported(event) {
+            return utils.SendError(c, fmt.Sprintf("Invalid event: %s", event), "INVALID_EVENT", fiber.StatusBadRequest)
+        }
+    }
+    
+    // Verificar se sessão existe
+    _, err := h.sessionRepo.GetByIdentifier(sessionID)
+    if err != nil {
+        return utils.SendError(c, "Session not found", "SESSION_NOT_FOUND", fiber.StatusNotFound)
+    }
+    
+    // Verificar se já existe webhook
+    existingWebhook, err := h.webhookRepo.GetBySessionID(sessionID)
+    if err != nil {
+        return utils.SendError(c, "Failed to check existing webhook", "DATABASE_ERROR", fiber.StatusInternalServerError)
+    }
+    
+    webhook := &Webhook{
+        SessionID:  sessionID,
+        WebhookURL: req.WebhookURL,
+        Events:     pq.StringArray(req.Events),
+        RawMode:    req.RawMode,
+    }
+    
+    if existingWebhook != nil {
+        // Atualizar webhook existente
+        webhook.ID = existingWebhook.ID
+        webhook.CreatedAt = existingWebhook.CreatedAt
+        err = h.webhookRepo.Update(webhook)
+    } else {
+        // Criar novo webhook
+        err = h.webhookRepo.Create(webhook)
+    }
+    
+    if err != nil {
+        h.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to save webhook")
+        return utils.SendError(c, "Failed to save webhook configuration", "WEBHOOK_SAVE_FAILED", fiber.StatusInternalServerError)
+    }
+    
+    h.logger.Info().
+        Str("session_id", sessionID).
+        Str("webhook_url", req.WebhookURL).
+        Strs("events", req.Events).
+        Bool("raw_mode", req.RawMode).
+        Msg("Webhook configured successfully")
+    
+    return utils.SendSuccess(c, fiber.Map{
+        "message": "Webhook configured successfully",
+        "webhook": webhook,
+    })
+}
+
+// @Summary Buscar webhook configurado
+// @Description Retorna a configuração atual do webhook da sessão
+// @Tags webhooks
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param sessionId path string true "ID da sessão"
+// @Success 200 {object} map[string]interface{} "Configuração do webhook"
+// @Router /sessions/{sessionId}/webhooks/find [get]
+func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
+    sessionID := c.Params("sessionId")
+    
+    if !utils.HasSessionAccess(c, sessionID) {
+        return utils.SendAccessDeniedError(c)
+    }
+    
+    webhook, err := h.webhookRepo.GetBySessionID(sessionID)
+    if err != nil {
+        return utils.SendError(c, "Failed to get webhook configuration", "DATABASE_ERROR", fiber.StatusInternalServerError)
+    }
+    
+    if webhook == nil {
+        return utils.SendSuccess(c, fiber.Map{
+            "webhook": nil,
+            "message": "No webhook configured for this session",
+        })
+    }
+    
+    return utils.SendSuccess(c, fiber.Map{
+        "webhook": webhook,
+    })
+}
+```
+
+## Migração do Sistema Atual
+
+### Remoção de Colunas da Tabela Sessions
+
+```sql
+-- Remover colunas webhook da tabela sessions
+ALTER TABLE sessions 
+DROP COLUMN IF EXISTS webhook_url,
+DROP COLUMN IF EXISTS webhook_events,
+DROP COLUMN IF EXISTS webhook_payload_mode;
+```
+
+### Migração de Dados Existentes
+
+```sql
+-- Migrar dados existentes da tabela sessions para a nova tabela webhooks
+INSERT INTO webhooks (session_id, webhook_url, events, raw_mode)
+SELECT 
+    id as session_id,
+    webhook_url,
+    COALESCE(webhook_events, ARRAY[]::TEXT[]) as events,
+    CASE 
+        WHEN webhook_payload_mode = 'raw' OR webhook_payload_mode = 'native_raw' THEN true
+        ELSE false
+    END as raw_mode
+FROM sessions 
+WHERE webhook_url IS NOT NULL AND webhook_url != '';
+```
+
+### Fluxo de Dados Simplificado
 
 ```mermaid
 sequenceDiagram
     participant WA as WhatsApp Server
     participant WM as whatsmeow Library
     participant DEH as DirectEventHandler
-    participant ER as EventRegistry
+    participant WR as WebhookRepository
     participant WS as WebhookService
     participant EP as External Endpoint
     
     WA->>WM: Raw WhatsApp Event
     WM->>DEH: events.Message (estrutura original)
-    DEH->>ER: Check if supported
-    ER-->>DEH: EventDescriptor
+    DEH->>WR: Get webhook config by session_id
+    WR-->>DEH: Webhook config (url, events, raw_mode)
     DEH->>DEH: Create DirectPayload (sem modificar evento)
     DEH->>WS: Send to webhook channel
     WS->>WS: JSON Marshal direto (Go encoder nativo)
     WS->>EP: HTTP POST (payload idêntico ao whatsmeow)
     EP-->>WS: HTTP Response
     
-    Note over DEH,WS: Nenhuma serialização manual ou transformação
-    Note over WS,EP: JSON gerado automaticamente pelo Go mantém estrutura original
+    Note over DEH,WS: Dados brutos preservados integralmente
+    Note over WS,EP: Webhook entrega estrutura exata da whatsmeow
 ```
 
-## Compatibilidade com Modo Legado
-
-```go
-// Camada de compatibilidade apenas para modo legado
-// O modo nativo não usa esta camada - envia diretamente
-func (c *CompatibilityLayer) ConvertToLegacyFormat(directEvent DirectWebhookPayload) WebhookPayload {
-    // Esta função só é chamada quando payload_mode = "processed" ou "both"
-    // Para payload_mode = "native_raw", o DirectWebhookPayload é enviado sem conversão
-    
-    switch directEvent.EventType {
-    case "*events.Message":
-        msg := directEvent.RawEventData.(*events.Message)
-        return WebhookPayload{
-            SessionID: directEvent.SessionID,
-            Event:     "message",
-            Data: map[string]interface{}{
-                "session_id": directEvent.SessionID,
-                "message_id": msg.Info.ID,
-                "from":       msg.Info.Sender.String(),
-                "chat":       msg.Info.Chat.String(),
-                "timestamp":  msg.Info.Timestamp.Unix(),
-                "message":    msg.Message,
-            },
-            Timestamp: directEvent.Timestamp,
-        }
-    // [Outros eventos apenas para compatibilidade legada...]
-    default:
-        // Para eventos não mapeados, usar estrutura original
-        return WebhookPayload{
-            SessionID: directEvent.SessionID,
-            Event:     directEvent.EventName,
-            Data:      directEvent.RawEventData, // Estrutura whatsmeow original
-            Timestamp: directEvent.Timestamp,
-        }
-    }
-}
-```
-
-## API Endpoints Atualizados
+## API Endpoints Simplificados
 
 ### 1. Listar Eventos Disponíveis
 ```
-GET /webhooks/events
+GET /sessions/{sessionId}/webhooks/events
 ```
 
-Resposta expandida:
+Retorna todos os eventos disponíveis para configuração de webhooks:
+
 ```json
 {
   "events": [
@@ -576,9 +879,23 @@ Resposta expandida:
       "type": "*events.Message",
       "category": "messages",
       "enabled": true,
-      "description": "Fired when a message is received",
-      "example": "Webhook sent when user receives any message"
+      "description": "Fired when a message is received"
+    },
+    {
+      "name": "receipt",
+      "type": "*events.Receipt",
+      "category": "messages",
+      "enabled": true,
+      "description": "Fired when message receipt is received"
+    },
+    {
+      "name": "connected",
+      "type": "*events.Connected",
+      "category": "connection",
+      "enabled": true,
+      "description": "Fired when WhatsApp connection is established"
     }
+    // ... todos os outros eventos
   ],
   "categories": {
     "connection": ["connected", "disconnected", "connect_failure"],
@@ -607,69 +924,203 @@ Resposta expandida:
       "description": "Payload processado (modo legado)",
       "format": "Estrutura customizada simplificada",
       "compatibility": "Compatibilidade com versões anteriores"
-    },
-    "both": {
-      "description": "Ambos os formatos enviados",
-      "format": "Dois webhooks separados",
-      "compatibility": "Máxima e legado"
     }
   },
-  "statistics": {
-    "total_events": 45,
-    "total_categories": 12,
-    "enabled_by_default": 25
-  }
+  "total_events": 45,
+  "total_categories": 12
 }
 ```
 
-### 2. Configurar Webhook Avançado
+### 2. Configurar Webhook
 ```
-POST /webhooks/sessions/{sessionId}/configure
+POST /sessions/{sessionId}/webhooks/set
 ```
 
-Request expandido:
+Configura webhook para a sessão:
+
+**Request:**
 ```json
 {
-  "url": "https://api.exemplo.com/webhook",
-  "active": true,
-  "payload_mode": "native_raw",
-  "configuration": {
-    "enabled_events": ["message", "receipt"],
-    "enabled_categories": ["messages", "calls"],
-    "filters": {
-      "include_categories": ["messages"],
-      "exclude_events": ["history_sync"],
-      "custom_filters": {
-        "min_importance": "high"
-      }
-    },
-    "retry_config": {
-      "max_retries": 5,
-      "backoff_strategy": "exponential",
-      "base_delay": "2s",
-      "max_delay": "60s",
-      "jitter_enabled": true
-    }
-  }
+  "webhook_url": "https://api.exemplo.com/webhook",
+  "events": ["message", "receipt", "connected"],
+  "raw_mode": true
 }
 ```
 
-## Migração Gradual
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Webhook configured successfully",
+  "webhook": {
+    "id": "uuid-generated",
+    "session_id": "session_123",
+    "webhook_url": "https://api.exemplo.com/webhook",
+    "events": ["message", "receipt", "connected"],
+    "raw_mode": true,
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-15T10:00:00Z"
+  },
+  "timestamp": "2024-01-15T10:00:00Z"
+}
+```
 
-### Fase 1: Implementação Paralela
-- Manter sistema atual funcionando
-- Implementar novo sistema em paralelo
-- Adicionar flag `use_native_webhooks` na configuração
+### 3. Buscar Configuração de Webhook
+```
+GET /sessions/{sessionId}/webhooks/find
+```
 
-### Fase 2: Modo Híbrido
-- Permitir configuração por sessão do modo de payload
-- Suporte a ambos os formatos simultaneamente
-- Documentação clara das diferenças
+Retorna a configuração atual do webhook da sessão:
 
-### Fase 3: Migração Completa
-- Deprecar modo legado
-- Mover todas as sessões para modo nativo
-- Remover código legado após período de transição
+**Response:**
+```json
+{
+  "success": true,
+  "webhook": {
+    "id": "uuid-generated",
+    "session_id": "session_123",
+    "webhook_url": "https://api.exemplo.com/webhook",
+    "events": ["message", "receipt", "connected"],
+    "raw_mode": true,
+    "created_at": "2024-01-15T10:00:00Z",
+    "updated_at": "2024-01-15T10:00:00Z"
+  },
+  "timestamp": "2024-01-15T10:00:00Z"
+}
+```
+
+**Response quando não há webhook configurado:**
+```json
+{
+  "success": true,
+  "webhook": null,
+  "message": "No webhook configured for this session",
+  "timestamp": "2024-01-15T10:00:00Z"
+}
+```
+
+## Integração com o Sistema Existente
+
+### Atualização do WebhookService
+
+```go
+type WebhookService struct {
+    mu           sync.RWMutex
+    client       *http.Client
+    webhookRepo  WebhookRepository
+    config       *config.Config
+    logger       logger.Logger
+    ctx          context.Context
+    cancel       context.CancelFunc
+    queue        chan DirectWebhookPayload
+    retryQueue   chan DirectWebhookPayload
+    workers      int
+    stats        WebhookServiceStats
+}
+
+func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
+    webhook, err := s.webhookRepo.GetBySessionID(event.SessionID)
+    if err != nil {
+        return fmt.Errorf("failed to get webhook config: %w", err)
+    }
+    
+    if webhook == nil {
+        s.logger.Debug().Str("session_id", event.SessionID).Msg("No webhook configured")
+        return nil
+    }
+    
+    if !s.isEventEnabled(event.Event, webhook.Events) {
+        s.logger.Debug().Str("session_id", event.SessionID).Str("event", event.Event).Msg("Event not enabled")
+        return nil
+    }
+    
+    // Criar payload direto baseado no modo configurado
+    if webhook.RawMode {
+        return s.processEventRaw(event, webhook)
+    } else {
+        return s.processEventProcessed(event, webhook)
+    }
+}
+
+func (s *WebhookService) processEventRaw(event meow.WebhookEvent, webhook *Webhook) error {
+    // Criar payload direto com dados originais da whatsmeow
+    directPayload := DirectWebhookPayload{
+        SessionID:    event.SessionID,
+        EventType:    event.EventType,
+        EventName:    event.Event,
+        Category:     s.getEventCategory(event.EventType),
+        RawEventData: event.RawEventData, // Dados exatos da whatsmeow
+        EventMeta: EventMetadata{
+            WhatsmeowVersion: "v0.0.0-20250611130243",
+            SessionJID:       webhook.SessionID,
+            ServerTimestamp:  time.Now().UTC().Format(time.RFC3339),
+            SessionName:      webhook.SessionID,
+        },
+        Timestamp:   event.Timestamp,
+        PayloadType: "native_raw",
+        URL:         webhook.WebhookURL,
+    }
+    
+    return s.SendDirectWebhook(directPayload)
+}
+
+func (s *WebhookService) SendDirectWebhook(payload DirectWebhookPayload) error {
+    select {
+    case s.queue <- payload:
+        s.logger.Debug().
+            Str("session_id", payload.SessionID).
+            Str("event_type", payload.EventType).
+            Msg("Direct webhook queued")
+        return nil
+    default:
+        return fmt.Errorf("webhook queue is full")
+    }
+}
+
+func (s *WebhookService) sendHTTPWebhook(payload DirectWebhookPayload) error {
+    // Serialização automática pelo JSON encoder do Go
+    // Mantém estrutura exata da whatsmeow em RawEventData
+    jsonData, err := json.Marshal(payload)
+    if err != nil {
+        return fmt.Errorf("failed to marshal payload: %w", err)
+    }
+    
+    req, err := http.NewRequestWithContext(s.ctx, "POST", payload.URL, bytes.NewBuffer(jsonData))
+    if err != nil {
+        return fmt.Errorf("failed to create request: %w", err)
+    }
+    
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("User-Agent", "ZeMeow-Webhook/2.0")
+    req.Header.Set("X-Webhook-Event", payload.EventName)
+    req.Header.Set("X-Session-ID", payload.SessionID)
+    req.Header.Set("X-Event-Type", payload.EventType)
+    req.Header.Set("X-Payload-Type", payload.PayloadType)
+    
+    start := time.Now()
+    resp, err := s.client.Do(req)
+    if err != nil {
+        return fmt.Errorf("failed to send request: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    duration := time.Since(start)
+    
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        return fmt.Errorf("webhook returned status %d", resp.StatusCode)
+    }
+    
+    s.logger.Info().
+        Str("session_id", payload.SessionID).
+        Str("event_type", payload.EventType).
+        Str("url", payload.URL).
+        Int("status", resp.StatusCode).
+        Dur("duration", duration).
+        Msg("Direct webhook sent successfully")
+    
+    return nil
+}
+```
 
 ## Benefícios da Refatoração
 
