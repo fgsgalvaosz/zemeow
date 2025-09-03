@@ -54,9 +54,6 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 
 	if session.WebhookURL != nil && *session.WebhookURL != "" {
 		payloadMode := "processed" // padrão
-		if session.WebhookPayloadMode != nil {
-			payloadMode = *session.WebhookPayloadMode
-		}
 
 		webhooks = append(webhooks, map[string]interface{}{
 			"id":           1,
@@ -121,16 +118,10 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 	if req.Active {
 		session.WebhookURL = &req.URL
 		session.WebhookEvents = pq.StringArray(req.Events)
-		// Configurar PayloadMode (padrão: "processed")
-		payloadMode := req.PayloadMode
-		if payloadMode == "" {
-			payloadMode = "processed"
-		}
-		session.WebhookPayloadMode = &payloadMode
+
 	} else {
 		session.WebhookURL = nil
 		session.WebhookEvents = nil
-		session.WebhookPayloadMode = nil
 	}
 
 	if err := h.sessionRepo.Update(session); err != nil {
@@ -142,14 +133,8 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 		Str("session_id", sessionID).
 		Str("url", req.URL).
 		Strs("events", req.Events).
-		Str("payload_mode", req.PayloadMode).
 		Bool("active", req.Active).
 		Msg("Webhook configured successfully")
-
-	payloadMode := req.PayloadMode
-	if payloadMode == "" {
-		payloadMode = "processed"
-	}
 
 	return c.JSON(fiber.Map{
 		"status":     "configured",
@@ -159,7 +144,7 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 			"id":           time.Now().Unix(),
 			"url":          req.URL,
 			"events":       req.Events,
-			"payload_mode": payloadMode,
+			"payload_mode": "processed", // Valor padrão fixo
 			"active":       req.Active,
 			"created_at":   time.Now().Unix(),
 		},

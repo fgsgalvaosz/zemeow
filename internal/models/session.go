@@ -33,7 +33,6 @@ type Session struct {
 	ProxyPassword    *string        `json:"proxy_password,omitempty" db:"proxy_password"`
 	WebhookURL       *string        `json:"webhook_url,omitempty" db:"webhook_url"`
 	WebhookEvents    pq.StringArray `json:"webhook_events" db:"webhook_events"`
-	WebhookPayloadMode *string      `json:"webhook_payload_mode,omitempty" db:"webhook_payload_mode"` // "processed" | "raw" | "both"`
 	CreatedAt        time.Time      `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at" db:"updated_at"`
 	LastConnectedAt  *time.Time     `json:"last_connected_at,omitempty" db:"last_connected_at"`
@@ -91,7 +90,7 @@ type WebhookConfig struct {
 	URL         string   `json:"url"`
 	Events      []string `json:"events"`
 	Secret      string   `json:"secret,omitempty"`
-	PayloadMode string   `json:"payload_mode,omitempty"` // "processed" | "raw" | "both"
+
 }
 
 type Metadata map[string]interface{}

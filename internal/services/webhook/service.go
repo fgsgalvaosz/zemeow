@@ -219,9 +219,6 @@ func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
 
 	// Determinar modo de payload (padrão: processed)
 	payloadMode := "processed"
-	if session.WebhookPayloadMode != nil && *session.WebhookPayloadMode != "" {
-		payloadMode = *session.WebhookPayloadMode
-	}
 
 	// Processar conforme o modo configurado
 	switch payloadMode {

@@ -23,7 +23,6 @@ type WebhookEvent struct {
 	Timestamp    time.Time   `json:"timestamp"`
 	// Campos adicionais para suporte a payload bruto
 	RawEventData interface{} `json:"raw_event_data,omitempty"` // Dados originais do evento whatsmeow
-	PayloadMode  string      `json:"-"`                        // "processed" | "raw" | "both"
 	EventType    string      `json:"event_type,omitempty"`     // Tipo específico do evento (ex: "message", "receipt")
 }
 
@@ -533,7 +532,6 @@ func (c *MyClient) sendWebhookEventRaw(evt interface{}) {
 		Data:         nil, // Data will be in RawEventData
 		Timestamp:    time.Now(),
 		RawEventData: evt,
-		PayloadMode:  "raw",
 		EventType:    eventType,
 	}
 
