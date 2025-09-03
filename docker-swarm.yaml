@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # ZeMeow WhatsApp API Application
+  zemeow:
+    image: felipyfgs17/zemeow:latest
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      placement:
+        constraints:
+          - node.role == worker
+    ports:
+      - "8080:8080"
+    environment:
+      # Server Configuration
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - ENVIRONMENT=production
+      
+      # Database Configuration (PostgreSQL)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=zemeow
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_SSLMODE=disable
+      
+      # Authentication
+      - ADMIN_API_KEY=sua_chave_admin_secreta
+      
+      # Logging Configuration
+      - LOG_LEVEL=info
+      - LOG_PRETTY=false
+      - LOG_COLOR=false
+      - LOG_CONSOLE=true
+      - LOG_FORMAT=json
+      
+      # MinIO/S3 Storage Configuration
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=zemeow-media
+      - MINIO_USE_SSL=false
+      - MINIO_REGION=us-east-1
+      
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+    
+    volumes:
+      - sessions_data:/app/sessions
+      - logs_data:/app/logs
+    networks:
+      - zemeow_network
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+      - POSTGRES_DB=zemeow
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zemeow_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zemeow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    volumes:
+      - redis_data:/data
+    networks:
+      - zemeow_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Storage
+  minio:
+    image: minio/minio:latest
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - zemeow_network
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  sessions_data:
+  logs_data:
+
+networks:
+  zemeow_network:
+    driver: overlay

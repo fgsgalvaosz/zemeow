@@ -45,7 +45,6 @@ COPY --from=builder /app/zemeow .
 # Copiar arquivos de configuração e migrações
 COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
-COPY --from=builder /app/web ./web
 
 # Criar diretórios necessários
 RUN mkdir -p /app/sessions /app/logs && \
