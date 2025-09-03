@@ -24,197 +24,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/auth/cache/clear": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Limpa o cache de autenticação, forçando revalidação de todas as API keys",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Limpar cache",
-                "responses": {
-                    "200": {
-                        "description": "Cache limpo com sucesso",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Acesso negado",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/cache/stats": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Retorna estatísticas de uso do cache de autenticação",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Obter estatísticas do cache",
-                "responses": {
-                    "200": {
-                        "description": "Estatísticas do cache",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "403": {
-                        "description": "Acesso negado",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/generate": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Gera uma nova API key para uma sessão",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Gerar API Key",
-                "parameters": [
-                    {
-                        "description": "Dados para geração da API key",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.GenerateAPIKeyRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "API key gerada com sucesso",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "Dados inválidos",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/revoke": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Revoga uma API key existente, tornando-a inválida",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Revogar API Key",
-                "responses": {
-                    "200": {
-                        "description": "API key revogada com sucesso",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "API key não encontrada",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/validate": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Valida se uma API key é válida e ativa",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Validar API Key",
-                "responses": {
-                    "200": {
-                        "description": "API key válida",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "401": {
-                        "description": "API key inválida",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/health": {
             "get": {
                 "description": "Verifica o status da API",
@@ -3945,20 +3754,13 @@ const docTemplate = `{
                     "example": "https://example.com/webhook"
                 }
             }
-        },
-        "handlers.GenerateAPIKeyRequest": {
-            "type": "object",
-            "properties": {
-                "session_id": {
-                    "type": "string"
-                }
-            }
         }
     },
     "securityDefinitions": {
         "ApiKeyAuth": {
+            "description": "Bearer token ou API key para autenticação na API. Pode ser fornecido no header Authorization (Bearer \u003ctoken\u003e), X-API-Key ou apikey.",
             "type": "apiKey",
-            "name": "X-API-Key",
+            "name": "Authorization",
             "in": "header"
         }
     }
@@ -3966,12 +3768,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:8080",
+	Version:          "1.0.0",
+	Host:             "localhost:3000",
 	BasePath:         "/",
-	Schemes:          []string{"http", "https"},
-	Title:            "Zemeow WhatsApp API",
-	Description:      "API para integração com WhatsApp usando whatsmeow",
+	Schemes:          []string{},
+	Title:            "ZeMeow WhatsApp API",
+	Description:      "API para integração com WhatsApp usando a biblioteca whatsmeow. Permite criação, gerenciamento e comunicação através de sessões do WhatsApp, facilitando automações, envio de mensagens, gerenciamento de grupos e integração com webhooks.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

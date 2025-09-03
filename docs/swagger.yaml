@@ -585,148 +585,22 @@ definitions:
     - events
     - url
     type: object
-  handlers.GenerateAPIKeyRequest:
-    properties:
-      session_id:
-        type: string
-    type: object
-host: localhost:8080
+host: localhost:3000
 info:
   contact:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: API para integração com WhatsApp usando whatsmeow
+  description: API para integração com WhatsApp usando a biblioteca whatsmeow. Permite
+    criação, gerenciamento e comunicação através de sessões do WhatsApp, facilitando
+    automações, envio de mensagens, gerenciamento de grupos e integração com webhooks.
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Zemeow WhatsApp API
-  version: "1.0"
+  title: ZeMeow WhatsApp API
+  version: 1.0.0
 paths:
-  /auth/cache/clear:
-    post:
-      consumes:
-      - application/json
-      description: Limpa o cache de autenticação, forçando revalidação de todas as
-        API keys
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Cache limpo com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Limpar cache
-      tags:
-      - auth
-  /auth/cache/stats:
-    get:
-      consumes:
-      - application/json
-      description: Retorna estatísticas de uso do cache de autenticação
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Estatísticas do cache
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter estatísticas do cache
-      tags:
-      - auth
-  /auth/generate:
-    post:
-      consumes:
-      - application/json
-      description: Gera uma nova API key para uma sessão
-      parameters:
-      - description: Dados para geração da API key
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.GenerateAPIKeyRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: API key gerada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Gerar API Key
-      tags:
-      - auth
-  /auth/revoke:
-    post:
-      consumes:
-      - application/json
-      description: Revoga uma API key existente, tornando-a inválida
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: API key revogada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: API key não encontrada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Revogar API Key
-      tags:
-      - auth
-  /auth/validate:
-    post:
-      consumes:
-      - application/json
-      description: Valida se uma API key é válida e ativa
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: API key válida
-          schema:
-            additionalProperties: true
-            type: object
-        "401":
-          description: API key inválida
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Validar API Key
-      tags:
-      - auth
   /health:
     get:
       consumes:
@@ -2648,12 +2522,11 @@ paths:
       summary: Configurar webhook
       tags:
       - webhooks
-schemes:
-- http
-- https
 securityDefinitions:
   ApiKeyAuth:
+    description: Bearer token ou API key para autenticação na API. Pode ser fornecido
+      no header Authorization (Bearer <token>), X-API-Key ou apikey.
     in: header
-    name: X-API-Key
+    name: Authorization
     type: apiKey
 swagger: "2.0"

@@ -1,6 +1,6 @@
-// @title Zemeow WhatsApp API
-// @version 1.0
-// @description API para integração com WhatsApp usando whatsmeow
+// @title ZeMeow WhatsApp API
+// @version 1.0.0
+// @description API para integração com WhatsApp usando a biblioteca whatsmeow. Permite criação, gerenciamento e comunicação através de sessões do WhatsApp, facilitando automações, envio de mensagens, gerenciamento de grupos e integração com webhooks.
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name API Support
@@ -10,147 +10,66 @@
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @host localhost:8080
+// @host localhost:3000
 // @BasePath /
-// @schemes http https
 
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
-// @name X-API-Key
-
+// @name Authorization
+// @description Bearer token ou API key para autenticação na API. Pode ser fornecido no header Authorization (Bearer <token>), X-API-Key ou apikey.
 package main
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
+	"log"
 
-	"github.com/felipe/zemeow/internal/api"
 	"github.com/felipe/zemeow/internal/config"
 	"github.com/felipe/zemeow/internal/database"
-	"github.com/felipe/zemeow/internal/repositories"
 	"github.com/felipe/zemeow/internal/logger"
+	"github.com/felipe/zemeow/internal/repositories"
+	"github.com/felipe/zemeow/internal/server"
 	"github.com/felipe/zemeow/internal/services/session"
 	"github.com/felipe/zemeow/internal/services/webhook"
 )
 
 func main() {
-
+	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
-		os.Exit(1)
+		log.Fatal("Failed to load configuration:", err)
 	}
 
-	// Inicializar logger com configurações do .env mostrando caminho relativo
-	logger.InitWithConfig(cfg.Logging.Level, cfg.Logging.Pretty, cfg.Logging.Color, true)
+	// Initialize logger
+	logger.Init(cfg.Logging.Level, cfg.Logging.Pretty)
 
-	dbConn, err := database.New(&cfg.Database)
+	// Initialize database
+	db, err := database.Connect(cfg)
 	if err != nil {
-		fmt.Printf("Failed to connect to database: %v\n", err)
-		os.Exit(1)
+		log.Fatal("Failed to connect to database:", err)
 	}
-	defer dbConn.Close()
+	defer db.Close()
 
-	logger.Get().Info().Msg("Initializing database...")
-
-	if err := dbConn.Migrate(); err != nil {
-		logger.Get().Error().Err(err).Msg("Failed to run application migrations")
-		os.Exit(1)
-	}
-	logger.Get().Info().Msg("Application migrations completed successfully")
-
-	if err := dbConn.CreateIndexes(); err != nil {
-		logger.Get().Warn().Err(err).Msg("Failed to create application indexes")
-
-	} else {
-		logger.Get().Info().Msg("Application indexes created successfully")
+	// Run migrations
+	if err := database.Migrate(db); err != nil {
+		log.Fatal("Failed to run migrations:", err)
 	}
 
-	if err := dbConn.OptimizeForWhatsApp(); err != nil {
-		logger.Get().Warn().Err(err).Msg("Failed to apply PostgreSQL optimizations")
+	// Initialize repositories
+	sessionRepo := repositories.NewSessionRepository(db.DB)
+	// messageRepo será nil por enquanto
 
-	} else {
-		logger.Get().Info().Msg("PostgreSQL optimizations applied successfully")
-	}
-
-	if err := dbConn.VerifySetup(); err != nil {
-		logger.Get().Warn().Err(err).Msg("Database setup verification failed")
-
-	}
-
-	logger.Get().Info().Msg("Database initialization completed")
-
-	logger.Get().Info().Msg("Initializing WhatsApp SQL Store...")
-	sqlStore := dbConn.GetSQLStore()
-	if sqlStore == nil {
-		logger.Get().Error().Msg("Failed to initialize WhatsApp SQL Store")
-		os.Exit(1)
-	}
-	logger.Get().Info().Msg("WhatsApp SQL Store initialized successfully")
-
-	logger.Get().Info().Msg("Ensuring WhatsApp relationships are created...")
-	if err := dbConn.Migrate(); err != nil {
-		logger.Get().Warn().Err(err).Msg("Failed to apply WhatsApp relationship migrations")
-
-	}
-
-	sessionRepo := repositories.NewSessionRepository(dbConn.DB)
-
-	// sqlxDB := sqlx.NewDb(dbConn.DB, "postgres")
-	// messageRepo := repositories.NewMessageRepository(sqlxDB) // Temporariamente comentado
-
-	// sessionManager := session.NewManager(sqlStore, sessionRepo, messageRepo, cfg) // Temporariamente comentado
-
-	// if err := sessionManager.Start(); err != nil {
-	//	logger.Get().Error().Err(err).Msg("Failed to start session manager")
-	//	os.Exit(1)
-	// }
-
-	sessionService := session.NewService(sessionRepo, nil) // manager temporariamente nil
-
-	logger.Get().Info().Msg("Initializing webhook service...")
+	// Initialize services
+	sessionService := session.NewService(sessionRepo, nil) // redis será nil por enquanto
 	webhookService := webhook.NewWebhookService(sessionRepo, cfg)
 
-	// webhookEventChan := sessionManager.GetWebhookChannel() // Temporariamente comentado
-	// webhookService.ProcessEvents(webhookEventChan) // Temporariamente comentado
+	// Create and start server
+	apiServer := api.NewServer(
+		cfg,
+		sessionRepo,
+		sessionService,
+		nil, // authService pode ser nil por enquanto
+		webhookService,
+		nil, // messageRepo será nil por enquanto
+	)
 
-	// webhookService.Start() // Temporariamente comentado
-	logger.Get().Info().Msg("Webhook service started successfully")
-
-	server := api.NewServer(cfg, sessionRepo, sessionService, nil, webhookService, nil) // sqlStore e messageRepo temporariamente nil
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := server.Start(); err != nil {
-			logger.Get().Error().Err(err).Msg("Server error")
-			cancel()
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-quit:
-		logger.Get().Info().Msg("Shutting down server...")
-	case <-ctx.Done():
-		logger.Get().Info().Msg("Server context cancelled")
-	}
-
-	if err := server.Stop(); err != nil {
-		logger.Get().Error().Err(err).Msg("Error stopping server")
-	}
-
-	logger.Get().Info().Msg("Stopping webhook service...")
-	// webhookService.Stop() // Temporariamente comentado
-
-	// if err := sessionManager.Shutdown(ctx); err != nil { // Temporariamente comentado
-	//	logger.Get().Error().Err(err).Msg("Error shutting down session manager")
-	// }
-
-	logger.Get().Info().Msg("Server exited")
+	log.Fatal(apiServer.Start())
 }
