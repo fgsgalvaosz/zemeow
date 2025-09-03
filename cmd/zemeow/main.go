@@ -58,18 +58,20 @@ func main() {
 	}
 	defer db.Close()
 
+	// Run migrations automatically on startup
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
 	// Get SQL store for WhatsApp
 	container := db.GetSQLStore()
 	if container == nil {
 		log.Fatalf("Failed to initialize WhatsApp SQL store")
 	}
 
-	// Run migrations if migrate command is provided
+	// Run migrations if migrate command is provided (for backward compatibility)
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		if err := database.Migrate(db); err != nil {
-			log.Fatalf("Failed to run migrations: %v", err)
-		}
-		log.Println("Migrations completed successfully")
+		log.Println("Migrations already applied automatically on startup")
 		return
 	}
 
@@ -94,6 +96,9 @@ func main() {
 		log.Fatalf("Failed to start session manager: %v", err)
 	}
 	defer sessionManager.Shutdown(context.Background())
+
+	// Connect webhook service to WhatsApp events
+	webhookService.ProcessEvents(sessionManager.GetWebhookChannel())
 
 	// Create and start server
 	server := api.NewServer(cfg, sessionRepo, sessionService, nil, webhookService, messageRepo)

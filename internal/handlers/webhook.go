@@ -53,13 +53,11 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 	webhooks := []map[string]interface{}{}
 
 	if session.WebhookURL != nil && *session.WebhookURL != "" {
-		payloadMode := "processed" // padrão
-
 		webhooks = append(webhooks, map[string]interface{}{
 			"id":           1,
 			"url":          *session.WebhookURL,
 			"events":       []string(session.WebhookEvents),
-			"payload_mode": payloadMode,
+			"payload_mode": "raw", // Apenas modo bruto é suportado
 			"active":       true,
 			"created_at":   session.CreatedAt.Unix(),
 			"updated_at":   session.UpdatedAt.Unix(),
@@ -76,10 +74,8 @@ func (h *WebhookHandler) FindWebhook(c *fiber.Ctx) error {
 
 // @Summary Configurar webhook
 // @Description Configura um novo webhook para uma sessão específica com suporte a payload bruto
-// @Description Modos de payload disponíveis:
-// @Description - "processed": Payload processado e simplificado (padrão)
-// @Description - "raw": Payload bruto da whatsmeow sem transformações
-// @Description - "both": Ambos os formatos enviados separadamente
+// @Description Modo de payload disponível:
+// @Description - "raw": Payload bruto da whatsmeow sem transformações (único modo suportado)
 // @Tags webhooks
 // @Accept json
 // @Produce json
@@ -144,7 +140,7 @@ func (h *WebhookHandler) SetWebhook(c *fiber.Ctx) error {
 			"id":           time.Now().Unix(),
 			"url":          req.URL,
 			"events":       req.Events,
-			"payload_mode": "processed", // Valor padrão fixo
+			"payload_mode": "raw", // Valor fixo para modo bruto
 			"active":       req.Active,
 			"created_at":   time.Now().Unix(),
 		},

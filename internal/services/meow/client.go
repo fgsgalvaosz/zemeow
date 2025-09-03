@@ -97,10 +97,10 @@ func (c *MyClient) setupDefaultEventHandlers() {
 }
 
 func (c *MyClient) handleEvent(evt interface{}) {
-	// Send raw event first (zero serialization)
+	// Send raw event only (zero serialization)
 	c.sendWebhookEventRaw(evt)
 	
-	// Then process for backward compatibility
+	// Process event locally for persistence and internal handling
 	switch v := evt.(type) {
 	case *events.Connected:
 		c.mu.Lock()
@@ -122,11 +122,6 @@ func (c *MyClient) handleEvent(evt interface{}) {
 				callback(c.sessionID, jid)
 			}
 		}
-
-		c.sendWebhookEvent("connected", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.Disconnected:
 		c.mu.Lock()
 		c.isConnected = false
@@ -134,16 +129,8 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		c.mu.Unlock()
 
 		c.logger.Info().Msg("Disconnected from WhatsApp")
-		c.sendWebhookEvent("disconnected", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.LoggedOut:
 		c.logger.Info().Msg("Logged out from WhatsApp")
-		c.sendWebhookEvent("logged_out", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.Message:
 		c.mu.Lock()
 		c.messagesReceived++
@@ -158,22 +145,8 @@ func (c *MyClient) handleEvent(evt interface{}) {
 				c.logger.Error().Err(err).Str("message_id", v.Info.ID).Msg("Failed to persist message")
 			}
 		}
-
-		c.sendWebhookEvent("message", map[string]interface{}{
-			"session_id": c.sessionID,
-			"message_id": v.Info.ID,
-			"from":       v.Info.Sender.String(),
-			"chat":       v.Info.Chat.String(),
-			"timestamp":  v.Info.Timestamp.Unix(),
-			"message":    v.Message,
-		})
 	case *events.QR:
 		c.logger.Info().Msg("QR code received")
-		c.sendWebhookEvent("qr", map[string]interface{}{
-			"session_id": c.sessionID,
-			"qr_code":    v.Codes,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.PairSuccess:
 		jid := v.ID.String()
 		c.logger.Info().Str("jid", jid).Str("business_name", v.BusinessName).Str("platform", v.Platform).Msg("QR Pair Success")
@@ -185,32 +158,14 @@ func (c *MyClient) handleEvent(evt interface{}) {
 		if callback != nil {
 			callback(c.sessionID, jid)
 		}
-
-		c.sendWebhookEvent("pair_success", map[string]interface{}{
-			"session_id":    c.sessionID,
-			"jid":           jid,
-			"business_name": v.BusinessName,
-			"platform":      v.Platform,
-			"timestamp":     time.Now().Unix(),
-		})
 	case *events.StreamError:
 		c.logger.Error().Str("code", v.Code).Msg("Stream error")
-		c.sendWebhookEvent("stream_error", map[string]interface{}{
-			"session_id": c.sessionID,
-			"code":       v.Code,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.ConnectFailure:
 		c.mu.Lock()
 		c.reconnections++
 		c.mu.Unlock()
 
 		c.logger.Error().Int("reason", int(v.Reason)).Msg("Connection failed")
-		c.sendWebhookEvent("connect_failure", map[string]interface{}{
-			"session_id": c.sessionID,
-			"reason":     int(v.Reason),
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.Receipt:
 		c.logger.Debug().Str("message_id", v.MessageIDs[0]).Str("type", string(v.Type)).Msg("Message receipt")
 
@@ -220,191 +175,58 @@ func (c *MyClient) handleEvent(evt interface{}) {
 				c.logger.Error().Err(err).Msg("Failed to process receipt event")
 			}
 		}
-
-		c.sendWebhookEvent("receipt", map[string]interface{}{
-			"session_id":  c.sessionID,
-			"message_ids": v.MessageIDs,
-			"chat":        v.Chat.String(),
-			"sender":      v.Sender.String(),
-			"type":        string(v.Type),
-			"timestamp":   v.Timestamp.Unix(),
-		})
 	case *events.Presence:
 		c.logger.Debug().Str("from", v.From.String()).Msg("Presence update")
-		c.sendWebhookEvent("presence", map[string]interface{}{
-			"session_id": c.sessionID,
-			"from":       v.From.String(),
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.ChatPresence:
 		c.logger.Debug().Str("chat", v.Chat.String()).Str("state", string(v.State)).Msg("Chat presence")
-		c.sendWebhookEvent("chat_presence", map[string]interface{}{
-			"session_id": c.sessionID,
-			"chat":       v.Chat.String(),
-			"state":      string(v.State),
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.UndecryptableMessage:
 		c.logger.Warn().Str("from", v.Info.Sender.String()).Str("message_id", v.Info.ID).Msg("Undecryptable message")
-		c.sendWebhookEvent("undecryptable_message", map[string]interface{}{
-			"session_id": c.sessionID,
-			"message_id": v.Info.ID,
-			"from":       v.Info.Sender.String(),
-			"chat":       v.Info.Chat.String(),
-			"timestamp":  v.Info.Timestamp.Unix(),
-		})
 	case *events.DeleteForMe:
 		c.logger.Info().Str("message_id", v.MessageID).Msg("Message deleted for me")
-		c.sendWebhookEvent("delete_for_me", map[string]interface{}{
-			"session_id": c.sessionID,
-			"message_id": v.MessageID,
-			"timestamp":  v.Timestamp.Unix(),
-		})
 	case *events.GroupInfo:
 		c.logger.Info().Str("group", v.JID.String()).Msg("Group info updated")
-		c.sendWebhookEvent("group_info", map[string]interface{}{
-			"session_id": c.sessionID,
-			"group":      v.JID.String(),
-			"name":       v.Name,
-			"topic":      v.Topic,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.JoinedGroup:
 		c.logger.Info().Str("group", v.JID.String()).Msg("Joined group")
-		c.sendWebhookEvent("joined_group", map[string]interface{}{
-			"session_id": c.sessionID,
-			"group":      v.JID.String(),
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.Picture:
 		c.logger.Info().Str("jid", v.JID.String()).Msg("Profile picture updated")
-		c.sendWebhookEvent("picture", map[string]interface{}{
-			"session_id": c.sessionID,
-			"jid":        v.JID.String(),
-			"picture_id": v.PictureID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.CallOfferNotice:
 		c.logger.Info().Str("from", v.From.String()).Str("call_id", v.CallID).Msg("Call offer notice")
-		c.sendWebhookEvent("call_offer_notice", map[string]interface{}{
-			"session_id": c.sessionID,
-			"call_id":    v.CallID,
-			"from":       v.From.String(),
-			"timestamp":  v.Timestamp.Unix(),
-		})
 	case *events.CallTerminate:
 		c.logger.Info().Str("from", v.From.String()).Str("call_id", v.CallID).Msg("Call terminated")
-		c.sendWebhookEvent("call_terminate", map[string]interface{}{
-			"session_id": c.sessionID,
-			"call_id":    v.CallID,
-			"from":       v.From.String(),
-			"reason":     v.Reason,
-			"timestamp":  v.Timestamp.Unix(),
-		})
 	case *events.Contact:
 		c.logger.Info().Str("jid", v.JID.String()).Msg("Contact updated")
-		c.sendWebhookEvent("contact", map[string]interface{}{
-			"session_id": c.sessionID,
-			"jid":        v.JID.String(),
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.BlocklistChange:
 		c.logger.Info().Msg("Blocklist changed")
-		c.sendWebhookEvent("blocklist", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.AppState:
 		c.logger.Debug().Msg("App state sync")
-		c.sendWebhookEvent("app_state", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.AppStateSyncComplete:
 		c.logger.Info().Msg("App state sync complete")
-		c.sendWebhookEvent("app_state_sync_complete", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.KeepAliveTimeout:
 		c.logger.Warn().Msg("Keep alive timeout")
-		c.sendWebhookEvent("keepalive_timeout", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.KeepAliveRestored:
 		c.logger.Info().Msg("Keep alive restored")
-		c.sendWebhookEvent("keepalive_restored", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.NewsletterJoin:
 		c.logger.Info().Msg("Joined newsletter")
-		c.sendWebhookEvent("newsletter_join", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.NewsletterLeave:
 		c.logger.Info().Msg("Left newsletter")
-		c.sendWebhookEvent("newsletter_leave", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.HistorySync:
 		c.logger.Info().Int("conversations", len(v.Data.Conversations)).Msg("History sync")
-		c.sendWebhookEvent("history_sync", map[string]interface{}{
-			"session_id":    c.sessionID,
-			"conversations": len(v.Data.Conversations),
-			"timestamp":     time.Now().Unix(),
-		})
 	case *events.OfflineSyncPreview:
 		c.logger.Info().Msg("Offline sync preview")
-		c.sendWebhookEvent("offline_sync_preview", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.OfflineSyncCompleted:
 		c.logger.Info().Msg("Offline sync completed")
-		c.sendWebhookEvent("offline_sync_completed", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.TemporaryBan:
 		c.logger.Warn().Msg("Temporary ban")
-		c.sendWebhookEvent("temporary_ban", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.ClientOutdated:
 		c.logger.Error().Msg("Client outdated")
-		c.sendWebhookEvent("client_outdated", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.CATRefreshError:
 		c.logger.Error().Msg("CAT refresh error")
-		c.sendWebhookEvent("cat_refresh_error", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.StreamReplaced:
 		c.logger.Warn().Msg("Stream replaced")
-		c.sendWebhookEvent("stream_replaced", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.PermanentDisconnect:
 		c.logger.Error().Msg("Permanent disconnect")
-		c.sendWebhookEvent("permanent_disconnect", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	case *events.ManualLoginReconnect:
 		c.logger.Info().Msg("Manual login reconnect")
-		c.sendWebhookEvent("manual_login_reconnect", map[string]interface{}{
-			"session_id": c.sessionID,
-			"timestamp":  time.Now().Unix(),
-		})
 	}
 }
 

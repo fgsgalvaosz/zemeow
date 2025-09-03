@@ -92,6 +92,7 @@ func (db *DB) GetSQLStore() *sqlstore.Container {
 			Msg(logger.GetStandardizedMessage("database", "create_sqlstore", "success"))
 	}
 
+	// Agora criar as relações após garantir que as tabelas do whatsmeow existam
 	if err := db.createWhatsAppRelationships(); err != nil {
 		db.logger.Warn().
 			Str("operation", "create_relationships").
@@ -242,9 +243,16 @@ func (db *DB) createWhatsAppRelationships() error {
 
 	migrator := NewMigrator(db.DB)
 
+	// Verificar se as migrações já foram aplicadas
 	appliedVersions, err := migrator.GetAppliedVersions()
 	if err != nil {
-		return fmt.Errorf("failed to get applied versions: %w", err)
+		// Se não conseguirmos verificar as versões aplicadas, vamos aplicar as relações diretamente
+		relOp.Warn().
+			Err(err).
+			Msg("Failed to get applied versions, applying relationships directly")
+		
+		// Aplicar as relações diretamente
+		return db.applyWhatsAppRelationshipsDirectly()
 	}
 
 	relationshipMigrations := []int{3, 4, 5}
@@ -258,5 +266,124 @@ func (db *DB) createWhatsAppRelationships() error {
 
 	relOp.Success().
 		Msg(logger.GetStandardizedMessage("database", "create_relationships", "success"))
+	return nil
+}
+
+func (db *DB) applyWhatsAppRelationshipsDirectly() error {
+	// Aplicar as constraints de chave estrangeira diretamente
+	queries := []string{
+		`DO $$
+		BEGIN
+			-- whatsmeow_device
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_device') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_device_session') THEN
+					ALTER TABLE whatsmeow_device 
+					ADD CONSTRAINT fk_whatsmeow_device_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_identity_keys
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_identity_keys') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_identity_keys_session') THEN
+					ALTER TABLE whatsmeow_identity_keys 
+					ADD CONSTRAINT fk_whatsmeow_identity_keys_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_pre_keys
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_pre_keys') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_pre_keys_session') THEN
+					ALTER TABLE whatsmeow_pre_keys 
+					ADD CONSTRAINT fk_whatsmeow_pre_keys_session 
+					FOREIGN KEY (jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_sessions
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_sessions') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_sessions_session') THEN
+					ALTER TABLE whatsmeow_sessions 
+					ADD CONSTRAINT fk_whatsmeow_sessions_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_sender_keys
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_sender_keys') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_sender_keys_session') THEN
+					ALTER TABLE whatsmeow_sender_keys 
+					ADD CONSTRAINT fk_whatsmeow_sender_keys_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_app_state_sync_keys
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_sync_keys') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_app_state_sync_keys_session') THEN
+					ALTER TABLE whatsmeow_app_state_sync_keys 
+					ADD CONSTRAINT fk_whatsmeow_app_state_sync_keys_session 
+					FOREIGN KEY (jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_app_state_version
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_version') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_app_state_version_session') THEN
+					ALTER TABLE whatsmeow_app_state_version 
+					ADD CONSTRAINT fk_whatsmeow_app_state_version_session 
+					FOREIGN KEY (jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_app_state_mutation_macs
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_app_state_mutation_macs') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_app_state_mutation_macs_session') THEN
+					ALTER TABLE whatsmeow_app_state_mutation_macs 
+					ADD CONSTRAINT fk_whatsmeow_app_state_mutation_macs_session 
+					FOREIGN KEY (jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_contacts
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_contacts') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_contacts_session') THEN
+					ALTER TABLE whatsmeow_contacts 
+					ADD CONSTRAINT fk_whatsmeow_contacts_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			-- whatsmeow_chat_settings
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'whatsmeow_chat_settings') THEN
+				IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints 
+							  WHERE constraint_name = 'fk_whatsmeow_chat_settings_session') THEN
+					ALTER TABLE whatsmeow_chat_settings 
+					ADD CONSTRAINT fk_whatsmeow_chat_settings_session 
+					FOREIGN KEY (our_jid) REFERENCES sessions(jid) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+				END IF;
+			END IF;
+
+			RAISE NOTICE 'WhatsApp relationships created successfully';
+		END;
+		$$ LANGUAGE plpgsql;`,
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to apply WhatsApp relationships: %w", err)
+		}
+	}
+
 	return nil
 }

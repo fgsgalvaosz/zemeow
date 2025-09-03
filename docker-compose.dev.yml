@@ -1,5 +1,3 @@
-
-
 services:
   # PostgreSQL - Banco de dados principal
   postgres:
@@ -85,6 +83,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Webhook Tester - Ferramenta para testar webhooks durante desenvolvimento
+  webhook-tester:
+    image: tarampampam/webhook-tester:2
+    container_name: zemeow_webhook_tester
+    restart: unless-stopped
+    ports:
+      - "${WEBHOOK_TESTER_PORT:-8085}:8080"
+    networks:
+      - zemeow_network
+    environment:
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=console
+      - AUTO_CREATE_SESSIONS=true
+    command: ["serve", "--addr", "0.0.0.0", "--port", "8080"]
 
 volumes:
   postgres_data:

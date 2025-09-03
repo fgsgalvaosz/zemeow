@@ -217,27 +217,8 @@ func (s *WebhookService) processEvent(event meow.WebhookEvent) error {
 		}
 	}
 
-	// Determinar modo de payload (padrão: processed)
-	payloadMode := "processed"
-
-	// Processar conforme o modo configurado
-	switch payloadMode {
-	case "processed":
-		return s.processEventProcessed(event, session)
-	case "raw":
-		return s.processEventRaw(event, session)
-	case "both":
-		// Enviar ambos os formatos
-		err1 := s.processEventProcessed(event, session)
-		err2 := s.processEventRaw(event, session)
-		if err1 != nil {
-			return err1
-		}
-		return err2
-	default:
-		// Fallback para modo processado
-		return s.processEventProcessed(event, session)
-	}
+	// Usar sempre o modo bruto (único modo)
+	return s.processEventRaw(event, session)
 }
 
 func (s *WebhookService) worker(id int) {
@@ -435,24 +416,6 @@ func (s *WebhookService) TestWebhook(url string, sessionID string) error {
 	}
 
 	return s.sendHTTPWebhook(testPayload)
-}
-
-// processEventProcessed processa evento no formato processado (atual)
-func (s *WebhookService) processEventProcessed(event meow.WebhookEvent, session *models.Session) error {
-	payload := WebhookPayload{
-		SessionID: event.SessionID,
-		Event:     event.Event,
-		Data:      event.Data,
-		Timestamp: event.Timestamp,
-		URL:       *session.WebhookURL,
-		Metadata: map[string]interface{}{
-			"session_name": session.Name,
-			"jid":          session.JID,
-			"payload_type": "processed",
-		},
-	}
-
-	return s.SendWebhook(payload)
 }
 
 // processEventRaw processa evento no formato bruto da whatsmeow

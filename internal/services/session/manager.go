@@ -92,6 +92,12 @@ func (m *Manager) CreateSession(sessionID string, name string, token string) (*m
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
+	// Initialize the session in the WhatsApp manager immediately after creation
+	if err := m.whatsappMgr.InitializeNewSession(session); err != nil {
+		m.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to initialize WhatsApp session")
+		// Don't fail the session creation if WhatsApp initialization fails
+	}
+
 	m.cache.Set(sessionID, session)
 
 	m.lifecycle.EmitEvent(sessionID, EventSessionCreated, session)
@@ -137,7 +143,19 @@ func (m *Manager) DeleteSession(sessionID string) error {
 }
 
 func (m *Manager) ConnectSession(ctx context.Context, sessionID string) error {
-	_, err := m.whatsappMgr.ConnectSession(sessionID)
+	// Get the session first to ensure it exists
+	session, err := m.GetSession(sessionID)
+	if err != nil {
+		return fmt.Errorf("session not found: %w", err)
+	}
+
+	// Ensure the session is initialized in the WhatsApp manager
+	if err := m.whatsappMgr.InitializeSession(session); err != nil {
+		m.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to initialize WhatsApp session")
+		// Continue anyway as the session might already be initialized
+	}
+
+	_, err = m.whatsappMgr.ConnectSession(sessionID)
 	if err != nil {
 		return err
 	}

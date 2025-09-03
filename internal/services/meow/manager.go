@@ -68,7 +68,7 @@ func NewWhatsAppManager(container *sqlstore.Container, repository repositories.S
 		logger:      logger.GetWithSession("whatsapp_manager"),
 		ctx:         ctx,
 		cancel:      cancel,
-		webhookChan: make(chan WebhookEvent, 100),
+		webhookChan: make(chan WebhookEvent, 1000),
 	}
 
 	messagePersistence := message.NewPersistenceService(messageRepo, mediaService, manager)
@@ -200,12 +200,13 @@ func (m *WhatsAppManager) CreateSession(sessionIdentifier string, config *models
 		return nil, fmt.Errorf("failed to create session in database: %w", err)
 	}
 
+	// Initialize the session immediately after creation to ensure proper setup
 	if err := m.initializeSession(session); err != nil {
 		m.repository.Delete(session.ID)
 		return nil, fmt.Errorf("failed to initialize session: %w", err)
 	}
 
-	m.logger.Info().Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Session created successfully")
+	m.logger.Info().Str("session_id", session.GetSessionID()).Str("name", session.Name).Msg("Session created and initialized successfully")
 	return session, nil
 }
 
@@ -343,7 +344,6 @@ func (m *WhatsAppManager) handleQRCodeFlow(sessionID string, client *MyClient) (
 
 			case "success":
 				m.logger.Info().Str("session_id", sessionID).Msg("QR pairing successful!")
-
 				return
 
 			default:
@@ -528,8 +528,21 @@ func (m *WhatsAppManager) generateQRCodeBase64(qrText string) (string, error) {
 func (m *WhatsAppManager) onPairSuccess(sessionName, jid string) {
 	m.logger.Info().Str("session_name", sessionName).Str("jid", jid).Msg("QR pairing successful! Updating database...")
 
+	// Update the session with the real JID and status
 	if err := m.repository.UpdateStatusAndJID(sessionName, models.SessionStatusConnected, &jid); err != nil {
 		m.logger.Error().Err(err).Str("session_name", sessionName).Str("jid", jid).Msg("Failed to update status and JID on pair success")
+		
+		// Try to update only the JID if status update failed
+		if err2 := m.repository.UpdateJID(sessionName, &jid); err2 != nil {
+			m.logger.Error().Err(err2).Str("session_name", sessionName).Str("jid", jid).Msg("Failed to update JID on pair success")
+		} else {
+			// Also update status separately
+			if err3 := m.repository.UpdateStatus(sessionName, models.SessionStatusConnected); err3 != nil {
+				m.logger.Error().Err(err3).Str("session_name", sessionName).Msg("Failed to update status on pair success")
+			} else {
+				m.logger.Info().Str("session_name", sessionName).Str("jid", jid).Msg("Session JID and status updated successfully in separate operations")
+			}
+		}
 	} else {
 		m.logger.Info().Str("session_name", sessionName).Str("jid", jid).Msg("Session connected and JID updated successfully")
 	}
@@ -538,7 +551,6 @@ func (m *WhatsAppManager) onPairSuccess(sessionName, jid string) {
 		m.logger.Error().Err(err).Str("session_name", sessionName).Msg("Failed to clear QR code")
 	}
 }
-
 
 func (m *WhatsAppManager) reconnectOnStartup() {
 	m.logger.Info().Msg("Starting automatic reconnection of previously connected sessions")
