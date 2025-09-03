@@ -1,4 +1,5 @@
--- Migração 003: Criar relacionamentos com tabelas WhatsApp
+-- +goose Up
+-- Criar relacionamentos com tabelas WhatsApp
 -- Esta migração será executada após as tabelas do whatsmeow serem criadas
 
 DO $$

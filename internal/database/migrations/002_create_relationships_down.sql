@@ -1,4 +1,5 @@
--- Migração 003: Reverter relacionamentos com tabelas WhatsApp
+-- +goose Down
+-- Reverter relacionamentos com tabelas WhatsApp
 
 DO $$
 BEGIN
