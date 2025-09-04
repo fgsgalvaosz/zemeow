@@ -570,14 +570,6 @@ definitions:
           type: string
         minItems: 1
         type: array
-      payload_mode:
-        description: 'Modo do payload: "processed" | "raw" | "both"'
-        enum:
-        - processed
-        - raw
-        - both
-        example: processed
-        type: string
       url:
         example: https://example.com/webhook
         type: string
@@ -585,7 +577,6 @@ definitions:
     - events
     - url
     type: object
-host: localhost:8080
 info:
   contact:
     email: support@swagger.io
@@ -2431,10 +2422,8 @@ paths:
       - application/json
       description: |-
         Configura um novo webhook para uma sessão específica com suporte a payload bruto
-        Modos de payload disponíveis:
-        - "processed": Payload processado e simplificado (padrão)
-        - "raw": Payload bruto da whatsmeow sem transformações
-        - "both": Ambos os formatos enviados separadamente
+        Modo de payload disponível:
+        - "raw": Payload bruto da whatsmeow sem transformações (único modo suportado)
       parameters:
       - description: ID da sessão
         in: path

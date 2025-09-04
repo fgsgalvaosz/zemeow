@@ -6,6 +6,7 @@
 # Variáveis
 DOCKER_COMPOSE_DEV = docker compose -f docker-compose.dev.yml
 DOCKER_COMPOSE_PROD = docker compose -f docker-compose.yml
+DOCKER_COMPOSE_PUSH = docker compose -f docker-compose.push.yml
 GO_FILES = $(shell find . -name "*.go" -type f)
 
 # Cores para output
@@ -93,13 +94,12 @@ build: ## Compila a aplicação
 
 docker-build: ## Faz build da imagem Docker
 	@echo "$(GREEN)🐳 Fazendo build da imagem Docker...$(NC)"
-	docker build -t felipyfgs17/zemeow:latest -t felipyfgs17/zemeow:v1.1.0 .
+	$(DOCKER_COMPOSE_PUSH) build
 	@echo "$(GREEN)✅ Imagem Docker criada com sucesso$(NC)"
 
 docker-push: ## Faz push da imagem para Docker Hub
 	@echo "$(GREEN)📤 Fazendo push para Docker Hub...$(NC)"
-	docker push felipyfgs17/zemeow:latest
-	docker push felipyfgs17/zemeow:v1.1.0
+	$(DOCKER_COMPOSE_PUSH) push
 	@echo "$(GREEN)✅ Imagem enviada para Docker Hub$(NC)"
 
 docker-release: docker-build docker-push ## Build e push da imagem Docker
@@ -129,13 +129,17 @@ docs: swagger ## Alias para swagger
 
 swagger: ## Regenera documentação Swagger
 	@echo "$(GREEN)📚 Regenerando documentação Swagger...$(NC)"
-	@# Read port from .env file or default to 8080
-	@PORT=$$(grep SERVER_PORT .env | cut -d '=' -f2 || echo "8080")
-	@HOST=localhost
-	@echo "$(GREEN)📝 Usando host: $$HOST:$$PORT$(NC)"
+	@# Read SERVER_URL from .env file or construct from SERVER_HOST and SERVER_PORT
+	@SERVER_URL=$$(grep -E '^SERVER_URL=' .env 2>/dev/null | cut -d '=' -f2- | tr -d ' ')
+	@if [ -z "$$SERVER_URL" ] || [ "$$SERVER_URL" = "" ]; then \
+		HOST=$$(grep -E '^SERVER_HOST=' .env 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "localhost"); \
+		PORT=$$(grep -E '^SERVER_PORT=' .env 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "8080"); \
+		SERVER_URL="http://$$HOST:$$PORT"; \
+	fi
+	@echo "$(GREEN)📝 Usando SERVER_URL: $$SERVER_URL$(NC)"
 	@$$HOME/go/bin/swag init -g cmd/zemeow/main.go -o docs
 	@echo "$(GREEN)✅ Documentação atualizada em: docs/$(NC)"
-	@echo "$(YELLOW)💡 Acesse: http://$$HOST:$$PORT/swagger/index.html$(NC)"
+	@echo "$(YELLOW)💡 Acesse: $$SERVER_URL/swagger/index.html$(NC)"
 
 ## 🔍 Monitoramento
 status: ## Mostra status dos serviços

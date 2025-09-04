@@ -1,123 +1,14 @@
 version: '3.8'
 
 services:
-  # Main application service
+  # Main application service for Docker Hub push
   zemeow:
     build:
       context: .
       dockerfile: Dockerfile
-    image: felipegs/zemeow:latest  # Docker Hub image name
-    container_name: zemeow_app
-    restart: unless-stopped
-    ports:
-      - "${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
-    environment:
-      # Database configuration
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
-      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
-      
-      # Redis configuration
-      - REDIS_HOST=redis
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      
-      # MinIO configuration
-      - MINIO_ENDPOINT=minio:${MINIO_PORT:-9000}
-      
-      # Server configuration
-      - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
-      - SERVER_PORT=${SERVER_PORT:-8080}
-      
-      # API key
-      - ADMIN_API_KEY=${ADMIN_API_KEY}
-      
-      # Logging configuration
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_PRETTY=${LOG_PRETTY:-true}
-      - LOG_COLOR=${LOG_COLOR:-true}
-    
-    volumes:
-      - sessions_data:/app/sessions
-      - logs_data:/app/logs
+    image: felipyfgs17/zemeow:latest  # Docker Hub image name
     networks:
       - zemeow_network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SERVER_PORT:-8080}/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # PostgreSQL database
-  postgres:
-    image: postgres:15-alpine
-    container_name: zemeow_postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-zemeow}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - zemeow_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-zemeow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Redis cache
-  redis:
-    image: redis:7-alpine
-    container_name: zemeow_redis
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - zemeow_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # MinIO storage
-  minio:
-    image: minio/minio:latest
-    container_name: zemeow_minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
-    ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
-    volumes:
-      - minio_data:/data
-    networks:
-      - zemeow_network
-
-volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
-  sessions_data:
-  logs_data:
 
 networks:
   zemeow_network:

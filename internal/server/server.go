@@ -15,6 +15,8 @@ import (
 	"github.com/felipe/zemeow/internal/routers"
 	"github.com/felipe/zemeow/internal/services/session"
 	"github.com/felipe/zemeow/internal/services/webhook"
+
+	_ "github.com/felipe/zemeow/docs"
 )
 
 type Server struct {

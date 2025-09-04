@@ -9,9 +9,10 @@ import (
 	"github.com/felipe/zemeow/internal/database"
 	"github.com/felipe/zemeow/internal/logger"
 	"github.com/felipe/zemeow/internal/repositories"
-	"github.com/felipe/zemeow/internal/server"
+	api "github.com/felipe/zemeow/internal/server"
 	"github.com/felipe/zemeow/internal/services/session"
 	"github.com/felipe/zemeow/internal/services/webhook"
+	docs "github.com/felipe/zemeow/docs" // Import docs package
 	"github.com/joho/godotenv"
 	"github.com/jmoiron/sqlx"
 )
@@ -28,7 +29,6 @@ import (
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @host localhost:8080
 // @BasePath /
 
 // @securityDefinitions.apikey ApiKeyAuth
@@ -50,6 +50,9 @@ func main() {
 
 	// Initialize logger
 	logger.InitWithConfig(cfg.Logging.Level, cfg.Logging.Pretty, cfg.Logging.Color, cfg.Logging.IncludeCaller)
+
+	// Configure Swagger host dynamically based on environment
+	configureSwaggerHost(cfg)
 
 	// Connect to database
 	db, err := database.Connect(cfg)
@@ -108,4 +111,35 @@ func main() {
 	if err := server.Start(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// configureSwaggerHost dynamically sets the Swagger host based on environment variables
+func configureSwaggerHost(cfg *config.Config) {
+	// Use SERVER_URL from environment if available
+	serverURL := cfg.Server.ServerURL
+	if serverURL == "" {
+		// Fallback to constructing from host and port
+		if cfg.IsProduction() {
+			serverURL = "https://api.xapza.com" // Default production URL
+		} else {
+			serverURL = "http://localhost:8080" // Default development URL
+		}
+	}
+
+	// Extract host from SERVER_URL
+	host := serverURL
+	if len(host) > 7 && host[:7] == "http://" {
+		host = host[7:]
+	} else if len(host) > 8 && host[:8] == "https://" {
+		host = host[8:]
+	}
+	
+	// Remove trailing slash if present
+	if len(host) > 0 && host[len(host)-1] == '/' {
+		host = host[:len(host)-1]
+	}
+	
+	// Update the SwaggerInfo host directly
+	docs.SwaggerInfo.Host = host
+	log.Printf("Swagger host configured to: %s", host)
 }

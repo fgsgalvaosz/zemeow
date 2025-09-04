@@ -5,24 +5,22 @@ services:
   zemeow:
     image: felipyfgs17/zemeow:latest
     deploy:
+      mode: replicated
       replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
       placement:
         constraints:
-          - node.role == worker
-    ports:
-      - "8080:8080"
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.zemeow.rule=Host(`api.xapza.com`)
+        - traefik.http.routers.zemeow.entrypoints=websecure
+        - traefik.http.routers.zemeow.tls.certresolver=letsencryptresolver
+        - traefik.http.services.zemeow.loadbalancer.server.port=8080
     environment:
       # Server Configuration
-      - SERVER_HOST=0.0.0.0
+      - SERVER_HOST=localhost
       - SERVER_PORT=8080
+      - SERVER_URL=https://api.xapza.com
       - ENVIRONMENT=production
       
       # Database Configuration (PostgreSQL)
@@ -61,7 +59,10 @@ services:
       - sessions_data:/app/sessions
       - logs_data:/app/logs
     networks:
-      - zemeow_network
+      - infraNet
+    ports:
+      - "8080:8080"
+    # Não expor portas externamente, apenas via Traefik
     depends_on:
       - postgres
       - redis
@@ -88,7 +89,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - zemeow_network
+      - infraNet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d zemeow"]
       interval: 10s
@@ -106,12 +107,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - zemeow_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - infraNet
 
   # MinIO Storage
   minio:
@@ -121,6 +117,13 @@ services:
       placement:
         constraints:
           - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.minio.rule=Host(`minio.xapza.com`)
+        - traefik.http.routers.minio.entrypoints=websecure
+        - traefik.http.routers.minio.tls.certresolver=letsencryptresolver
+        - traefik.http.services.minio.loadbalancer.server.port=9001
+
     command: server /data --console-address ":9001"
     environment:
       - MINIO_ROOT_USER=minioadmin
@@ -128,7 +131,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - zemeow_network
+      - infraNet
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -141,5 +144,6 @@ volumes:
   logs_data:
 
 networks:
-  zemeow_network:
-    driver: overlay
+  infraNet:
+    external: true
+    name: infraNet

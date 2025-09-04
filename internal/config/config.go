@@ -39,6 +39,7 @@ type ServerConfig struct {
 	Host         string
 	Port         int
 	Environment  string
+	ServerURL    string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
@@ -108,6 +109,7 @@ func Load() (*Config, error) {
 			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
 			Port:         getEnvAsInt("SERVER_PORT", 8080),
 			Environment:  getEnv("ENVIRONMENT", "development"),
+			ServerURL:    getEnv("SERVER_URL", ""),
 			ReadTimeout:  getEnvAsDuration("SERVER_READ_TIMEOUT", 30*time.Second),
 			WriteTimeout: getEnvAsDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
 			IdleTimeout:  getEnvAsDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
@@ -146,6 +148,17 @@ func Load() (*Config, error) {
 			Region:          getEnv("MINIO_REGION", "us-east-1"),
 			PublicURL:       getEnv("MINIO_PUBLIC_URL", ""),
 		},
+	}
+
+	// If SERVER_URL is not set, construct it from host and port
+	if config.Server.ServerURL == "" {
+		if config.IsProduction() {
+			// In production, default to a standard domain
+			config.Server.ServerURL = "https://api.xapza.com"
+		} else {
+			// In development, use localhost with port
+			config.Server.ServerURL = fmt.Sprintf("http://localhost:%d", config.Server.Port)
+		}
 	}
 
 	if config.Database.URL == "" {

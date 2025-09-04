@@ -2889,7 +2889,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Configura um novo webhook para uma sessão específica com suporte a payload bruto\nModos de payload disponíveis:\n- \"processed\": Payload processado e simplificado (padrão)\n- \"raw\": Payload bruto da whatsmeow sem transformações\n- \"both\": Ambos os formatos enviados separadamente",
+                "description": "Configura um novo webhook para uma sessão específica com suporte a payload bruto\nModo de payload disponível:\n- \"raw\": Payload bruto da whatsmeow sem transformações (único modo suportado)",
                 "consumes": [
                     "application/json"
                 ],
@@ -3755,16 +3755,6 @@ const docTemplate = `{
                         "presence"
                     ]
                 },
-                "payload_mode": {
-                    "description": "Modo do payload: \"processed\" | \"raw\" | \"both\"",
-                    "type": "string",
-                    "enum": [
-                        "processed",
-                        "raw",
-                        "both"
-                    ],
-                    "example": "processed"
-                },
                 "url": {
                     "type": "string",
                     "example": "https://example.com/webhook"
@@ -3785,7 +3775,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0.0",
-	Host:             "localhost:8080",
+	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "ZeMeow WhatsApp API",
