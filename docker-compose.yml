@@ -1,11 +1,6 @@
-version: '3.8'
-
 services:
   # Main application service for Docker Hub push
   zemeow:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: felipyfgs17/zemeow:latest  # Docker Hub image name
     networks:
       - zemeow_network
