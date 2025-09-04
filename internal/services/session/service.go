@@ -394,10 +394,15 @@ func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
+	// Debug: Log manager type
+	s.logger.Debug().Str("session_id", sessionID).Str("manager_type", fmt.Sprintf("%T", s.manager)).Msg("Manager type information")
+
+	// Try the new interface first (for updated containers)
 	if manager, ok := s.manager.(interface {
-		GetClient(string) (interface{}, error)
+		GetClientInterface(string) (interface{}, error)
 	}); ok {
-		client, err := manager.GetClient(sessionID)
+		s.logger.Debug().Str("session_id", sessionID).Msg("Using GetClientInterface method")
+		client, err := manager.GetClientInterface(sessionID)
 		if err != nil {
 			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get WhatsApp client from manager")
 			return nil, fmt.Errorf("failed to get WhatsApp client: %w", err)
@@ -405,7 +410,20 @@ func (s *SessionService) GetWhatsAppClient(ctx context.Context, sessionID string
 		return client, nil
 	}
 
-	s.logger.Warn().Str("session_id", sessionID).Msg("WhatsApp manager not available for client access")
+	// Fallback to session.Manager interface
+	if manager, ok := s.manager.(interface {
+		GetClient(string) (interface{}, error)
+	}); ok {
+		s.logger.Debug().Str("session_id", sessionID).Msg("Using session.Manager GetClient method")
+		client, err := manager.GetClient(sessionID)
+		if err != nil {
+			s.logger.Error().Err(err).Str("session_id", sessionID).Msg("Failed to get client from session manager")
+			return nil, fmt.Errorf("failed to get WhatsApp client: %w", err)
+		}
+		return client, nil
+	}
+
+	s.logger.Warn().Str("session_id", sessionID).Str("manager_type", fmt.Sprintf("%T", s.manager)).Msg("WhatsApp manager not available for client access")
 	return nil, fmt.Errorf("WhatsApp manager not available")
 }
 

@@ -77,14 +77,53 @@ func NewWhatsAppManager(container *sqlstore.Container, repository repositories.S
 	return manager
 }
 
-func (m *WhatsAppManager) GetClient(sessionID string) *whatsmeow.Client {
+func (m *WhatsAppManager) GetClient(identifier string) *whatsmeow.Client {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if myClient, exists := m.clients[sessionID]; exists {
+	// First try to find by sessionID (UUID)
+	if myClient, exists := m.clients[identifier]; exists {
 		return myClient.client
 	}
+
+	// Then try to find by session name
+	for sessionID, session := range m.sessions {
+		if session.Name == identifier {
+			if client, exists := m.clients[sessionID]; exists {
+				return client.client
+			}
+		}
+	}
+
 	return nil
+}
+
+// GetClientInterface with interface{} return type for SessionService compatibility
+func (m *WhatsAppManager) GetClientInterface(identifier string) (interface{}, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// First try to find by sessionID (UUID)
+	if myClient, exists := m.clients[identifier]; exists {
+		if myClient.client == nil {
+			return nil, fmt.Errorf("client is nil for session %s", identifier)
+		}
+		return myClient, nil
+	}
+
+	// Then try to find by session name
+	for sessionID, session := range m.sessions {
+		if session.Name == identifier {
+			if client, exists := m.clients[sessionID]; exists {
+				if client.client == nil {
+					return nil, fmt.Errorf("client is nil for session %s", identifier)
+				}
+				return client, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("session not found or not connected: %s", identifier)
 }
 
 func (m *WhatsAppManager) Start() error {

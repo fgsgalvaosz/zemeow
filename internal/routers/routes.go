@@ -184,261 +184,241 @@ func (r *Router) setupSessionOperationRoutes(sessions fiber.Router) {
 
 func (r *Router) setupMessageRoutes() {
 
-	messages := r.app.Group("/sessions/:sessionId")
+	sessions := r.app.Group("/sessions/:sessionId")
 
-	messageRoutes := messages.Group("/",
+	// Setup message-specific routes under /messages/
+	r.setupMessageSendRoutes(sessions)
+
+	// Setup other categorized routes
+	r.setupPresenceRoutes(sessions)
+	r.setupContactRoutes(sessions)
+	r.setupGroupRoutes(sessions)
+	r.setupNewsletterRoutes(sessions)
+}
+
+func (r *Router) setupMessageSendRoutes(sessions fiber.Router) {
+	messageRoutes := sessions.Group("/messages",
 		r.authMiddleware.RequireAPIKey(),
 		r.validationMiddleware.ValidateParams(),
+		r.validationMiddleware.ValidateSessionAccess(),
 	)
 
+	// Send message routes
 	messageRoutes.Post("/send/text",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendTextRequest{}),
 		r.messageHandler.SendText,
 	)
 
 	messageRoutes.Post("/send/media",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendMediaRequest{}),
 		r.messageHandler.SendMedia,
 	)
 
 	messageRoutes.Post("/send/location",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendLocationRequest{}),
 		r.messageHandler.SendLocation,
 	)
 
 	messageRoutes.Post("/send/contact",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendContactRequest{}),
 		r.messageHandler.SendContact,
 	)
 
 	messageRoutes.Post("/send/sticker",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendStickerRequest{}),
 		r.messageHandler.SendSticker,
 	)
 
 	messageRoutes.Post("/send/buttons",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendButtonsRequest{}),
 		r.messageHandler.SendButtons,
 	)
 
 	messageRoutes.Post("/send/list",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendListRequest{}),
 		r.messageHandler.SendList,
 	)
 
 	messageRoutes.Post("/send/poll",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.SendPollRequest{}),
 		r.messageHandler.SendPoll,
 	)
 
 	messageRoutes.Post("/send/edit",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.EditMessageRequest{}),
 		r.messageHandler.EditMessage,
 	)
 
+	// Message interaction routes
 	messageRoutes.Post("/react",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.ReactRequest{}),
 		r.messageHandler.ReactToMessage,
 	)
 
 	messageRoutes.Post("/delete",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.DeleteMessageRequest{}),
 		r.messageHandler.DeleteMessage,
 	)
 
+	// Chat management routes
 	messageRoutes.Post("/chat/presence",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.ChatPresenceRequest{}),
 		r.messageHandler.SetChatPresence,
 	)
 
 	messageRoutes.Post("/chat/markread",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.MarkReadRequest{}),
 		r.messageHandler.MarkAsRead,
 	)
 
+	// Download routes
 	messageRoutes.Post("/download/image",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.DownloadMediaRequest{}),
 		r.messageHandler.DownloadImage,
 	)
 
 	messageRoutes.Post("/download/video",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.DownloadMediaRequest{}),
 		r.messageHandler.DownloadVideo,
 	)
 
 	messageRoutes.Post("/download/audio",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.DownloadMediaRequest{}),
 		r.messageHandler.DownloadAudio,
 	)
 
 	messageRoutes.Post("/download/document",
-		r.validationMiddleware.ValidateSessionAccess(),
 		r.validationMiddleware.ValidateJSON(&dto.DownloadMediaRequest{}),
 		r.messageHandler.DownloadDocument,
 	)
+}
 
-	messageRoutes.Post("/presence",
+func (r *Router) setupPresenceRoutes(sessions fiber.Router) {
+	presenceRoutes := sessions.Group("/presence",
+		r.authMiddleware.RequireAPIKey(),
+		r.validationMiddleware.ValidateParams(),
 		r.validationMiddleware.ValidateSessionAccess(),
+	)
+
+	presenceRoutes.Post("/set",
 		r.validationMiddleware.ValidateJSON(&dto.SessionPresenceRequest{}),
 		r.sessionHandler.SetPresence,
 	)
+}
 
-	messageRoutes.Post("/check",
+func (r *Router) setupContactRoutes(sessions fiber.Router) {
+	contactRoutes := sessions.Group("/contacts",
+		r.authMiddleware.RequireAPIKey(),
+		r.validationMiddleware.ValidateParams(),
 		r.validationMiddleware.ValidateSessionAccess(),
+	)
+
+	contactRoutes.Get("/",
+		r.sessionHandler.GetContacts,
+	)
+
+	contactRoutes.Post("/check",
 		r.validationMiddleware.ValidateJSON(&dto.CheckContactRequest{}),
 		r.sessionHandler.CheckContacts,
 	)
 
-	messageRoutes.Post("/info",
-		r.validationMiddleware.ValidateSessionAccess(),
+	contactRoutes.Post("/info",
 		r.validationMiddleware.ValidateJSON(&dto.ContactInfoRequest{}),
 		r.sessionHandler.GetContactInfo,
 	)
 
-	messageRoutes.Post("/avatar",
-		r.validationMiddleware.ValidateSessionAccess(),
+	contactRoutes.Post("/avatar",
 		r.validationMiddleware.ValidateJSON(&dto.ContactAvatarRequest{}),
 		r.sessionHandler.GetContactAvatar,
 	)
+}
 
-	messageRoutes.Get("/contacts",
+
+
+func (r *Router) setupNewsletterRoutes(sessions fiber.Router) {
+	newsletterRoutes := sessions.Group("/newsletter",
+		r.authMiddleware.RequireAPIKey(),
+		r.validationMiddleware.ValidateParams(),
 		r.validationMiddleware.ValidateSessionAccess(),
-		r.sessionHandler.GetContacts,
 	)
 
-	messageRoutes.Post("/proxy",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.validationMiddleware.ValidateJSON(&dto.ProxyConfigRequest{}),
-		r.sessionHandler.ConfigureProxy,
-	)
-
-	messageRoutes.Post("/s3/config",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.validationMiddleware.ValidateJSON(&dto.S3ConfigRequest{}),
-		r.sessionHandler.ConfigureS3,
-	)
-
-	messageRoutes.Get("/s3/config",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.sessionHandler.GetS3Config,
-	)
-
-	messageRoutes.Delete("/s3/config",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.sessionHandler.DeleteS3Config,
-	)
-
-	messageRoutes.Post("/s3/test",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.sessionHandler.TestS3Connection,
-	)
-
-	messageRoutes.Post("/pairphone",
-		r.validationMiddleware.ValidateSessionAccess(),
-		r.validationMiddleware.ValidateJSON(&dto.PairPhoneRequest{}),
-		r.sessionHandler.PairPhone,
-	)
-
-	messageRoutes.Get("/newsletter/list",
-		r.validationMiddleware.ValidateSessionAccess(),
+	newsletterRoutes.Get("/list",
 		r.sessionHandler.ListNewsletters,
 	)
+}
 
-	messageRoutes.Post("/group/create",
+func (r *Router) setupGroupRoutes(sessions fiber.Router) {
+	groupRoutes := sessions.Group("/groups",
+		r.authMiddleware.RequireAPIKey(),
+		r.validationMiddleware.ValidateParams(),
 		r.validationMiddleware.ValidateSessionAccess(),
+	)
+
+	groupRoutes.Post("/create",
 		r.validationMiddleware.ValidateJSON(&dto.CreateGroupRequest{}),
 		r.groupHandler.CreateGroup,
 	)
 
-	messageRoutes.Get("/group/list",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Get("/list",
 		r.groupHandler.ListGroups,
 	)
 
-	messageRoutes.Post("/group/info",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/info",
 		r.validationMiddleware.ValidateJSON(&dto.GroupInfoRequest{}),
 		r.groupHandler.GetGroupInfo,
 	)
 
-	messageRoutes.Post("/group/invitelink",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/invitelink",
 		r.validationMiddleware.ValidateJSON(&dto.GroupInviteLinkRequest{}),
 		r.groupHandler.GetInviteLink,
 	)
 
-	messageRoutes.Post("/group/leave",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/leave",
 		r.validationMiddleware.ValidateJSON(&dto.LeaveGroupRequest{}),
 		r.groupHandler.LeaveGroup,
 	)
 
-	messageRoutes.Post("/group/photo",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/photo",
 		r.validationMiddleware.ValidateJSON(&dto.SetGroupPhotoRequest{}),
 		r.groupHandler.SetGroupPhoto,
 	)
 
-	messageRoutes.Post("/group/photo/remove",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/photo/remove",
 		r.validationMiddleware.ValidateJSON(&dto.GroupPhotoRemoveRequest{}),
 		r.groupHandler.RemoveGroupPhoto,
 	)
 
-	messageRoutes.Post("/group/ephemeral",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/ephemeral",
 		r.validationMiddleware.ValidateJSON(&dto.GroupEphemeralRequest{}),
 		r.groupHandler.SetGroupEphemeral,
 	)
 
-	messageRoutes.Post("/group/inviteinfo",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/inviteinfo",
 		r.validationMiddleware.ValidateJSON(&dto.GroupInviteInfoRequest{}),
 		r.groupHandler.GetInviteInfo,
 	)
 
-	messageRoutes.Post("/group/name",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/name",
 		r.validationMiddleware.ValidateJSON(&dto.SetGroupNameRequest{}),
 		r.groupHandler.SetGroupName,
 	)
 
-	messageRoutes.Post("/group/topic",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/topic",
 		r.validationMiddleware.ValidateJSON(&dto.SetGroupTopicRequest{}),
 		r.groupHandler.SetGroupTopic,
 	)
 
-	messageRoutes.Post("/group/announce",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/announce",
 		r.validationMiddleware.ValidateJSON(&dto.SetGroupAnnounceRequest{}),
 		r.groupHandler.SetGroupAnnounce,
 	)
 
-	messageRoutes.Post("/group/locked",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/locked",
 		r.validationMiddleware.ValidateJSON(&dto.SetGroupLockedRequest{}),
 		r.groupHandler.SetGroupLocked,
 	)
 
-	messageRoutes.Post("/group/join",
-		r.validationMiddleware.ValidateSessionAccess(),
+	groupRoutes.Post("/join",
 		r.validationMiddleware.ValidateJSON(&dto.JoinGroupRequest{}),
 		r.groupHandler.JoinGroup,
 	)

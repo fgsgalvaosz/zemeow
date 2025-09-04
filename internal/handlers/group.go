@@ -40,7 +40,7 @@ func NewGroupHandler(sessionService session.Service) *GroupHandler {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/group/create [post]
+// @Router /sessions/{sessionId}/groups/create [post]
 func (h *GroupHandler) CreateGroup(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 

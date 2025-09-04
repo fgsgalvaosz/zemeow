@@ -9,15 +9,7 @@ type ProxyConfigRequest struct {
 	Password string `json:"password,omitempty" validate:"omitempty,max=255"`
 }
 
-type S3ConfigRequest struct {
-	Enabled         bool   `json:"enabled"`
-	Bucket          string `json:"bucket,omitempty" validate:"omitempty,min=3,max=63"`
-	Region          string `json:"region,omitempty" validate:"omitempty,min=2,max=50"`
-	AccessKeyID     string `json:"access_key_id,omitempty" validate:"omitempty,min=16,max=128"`
-	SecretAccessKey string `json:"secret_access_key,omitempty" validate:"omitempty,min=16,max=128"`
-	Endpoint        string `json:"endpoint,omitempty" validate:"omitempty,url"`
-	ForcePathStyle  bool   `json:"force_path_style,omitempty"`
-}
+
 
 type PairPhoneRequest struct {
 	Phone string `json:"phone" validate:"required,min=10,max=20"`
@@ -31,29 +23,7 @@ type ProxyConfigResponse struct {
 	Status  string `json:"status"`
 }
 
-type S3ConfigResponse struct {
-	Enabled    bool   `json:"enabled"`
-	Bucket     string `json:"bucket,omitempty"`
-	Region     string `json:"region,omitempty"`
-	Endpoint   string `json:"endpoint,omitempty"`
-	Status     string `json:"status"`
-	LastTested string `json:"last_tested,omitempty"`
-}
 
-type S3TestResponse struct {
-	Success    bool          `json:"success"`
-	Message    string        `json:"message"`
-	Latency    int64         `json:"latency_ms,omitempty"`
-	TestedAt   string        `json:"tested_at"`
-	BucketInfo *S3BucketInfo `json:"bucket_info,omitempty"`
-}
-
-type S3BucketInfo struct {
-	Name         string `json:"name"`
-	Region       string `json:"region"`
-	CreationDate string `json:"creation_date,omitempty"`
-	Permissions  string `json:"permissions"`
-}
 
 type PairPhoneResponse struct {
 	Success   bool   `json:"success"`

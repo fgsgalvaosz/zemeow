@@ -233,31 +233,6 @@ definitions:
     - message_id
     - to
     type: object
-  dto.S3ConfigRequest:
-    properties:
-      access_key_id:
-        maxLength: 128
-        minLength: 16
-        type: string
-      bucket:
-        maxLength: 63
-        minLength: 3
-        type: string
-      enabled:
-        type: boolean
-      endpoint:
-        type: string
-      force_path_style:
-        type: boolean
-      region:
-        maxLength: 50
-        minLength: 2
-        type: string
-      secret_access_key:
-        maxLength: 128
-        minLength: 16
-        type: string
-    type: object
   dto.Section:
     properties:
       rows:
@@ -722,7 +697,75 @@ paths:
       summary: Obter detalhes da sessão
       tags:
       - sessions
-  /sessions/{sessionId}/avatar:
+  /sessions/{sessionId}/connect:
+    post:
+      consumes:
+      - application/json
+      description: Inicia a conexão WhatsApp para a sessão e retorna o QR code
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Conexão iniciada com QR code
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Sessão já conectada ou erro de validação
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Conectar sessão
+      tags:
+      - sessions
+  /sessions/{sessionId}/contacts/:
+    get:
+      consumes:
+      - application/json
+      description: Retorna a lista de contatos da sessão WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de contatos
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Sessão não encontrada
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Listar contatos
+      tags:
+      - sessions
+  /sessions/{sessionId}/contacts/avatar:
     post:
       consumes:
       - application/json
@@ -762,27 +805,33 @@ paths:
       summary: Obter avatar de contato
       tags:
       - sessions
-  /sessions/{sessionId}/connect:
+  /sessions/{sessionId}/contacts/info:
     post:
       consumes:
       - application/json
-      description: Inicia a conexão WhatsApp para a sessão e retorna o QR code
+      description: Retorna informações detalhadas de um contato WhatsApp
       parameters:
       - description: ID da sessão
         in: path
         name: sessionId
         required: true
         type: string
+      - description: Dados do contato
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactInfoRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Conexão iniciada com QR code
+          description: Informações do contato
           schema:
             additionalProperties: true
             type: object
         "400":
-          description: Sessão já conectada ou erro de validação
+          description: Dados inválidos
           schema:
             additionalProperties: true
             type: object
@@ -793,41 +842,7 @@ paths:
             type: object
       security:
       - ApiKeyAuth: []
-      summary: Conectar sessão
-      tags:
-      - sessions
-  /sessions/{sessionId}/contacts:
-    get:
-      consumes:
-      - application/json
-      description: Retorna a lista de contatos da sessão WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Lista de contatos
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Sessão não encontrada
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Listar contatos
+      summary: Obter informações de contato
       tags:
       - sessions
   /sessions/{sessionId}/disconnect:
@@ -859,7 +874,7 @@ paths:
       summary: Desconectar sessão
       tags:
       - sessions
-  /sessions/{sessionId}/group/create:
+  /sessions/{sessionId}/groups/create:
     post:
       consumes:
       - application/json
@@ -1125,46 +1140,6 @@ paths:
       summary: Gerenciar participantes do grupo
       tags:
       - groups
-  /sessions/{sessionId}/info:
-    post:
-      consumes:
-      - application/json
-      description: Retorna informações detalhadas de um contato WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do contato
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.ContactInfoRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Informações do contato
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: Sessão não encontrada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter informações de contato
-      tags:
-      - sessions
   /sessions/{sessionId}/logout:
     post:
       consumes:
@@ -1422,7 +1397,7 @@ paths:
       summary: Obter status da mensagem
       tags:
       - messages
-  /sessions/{sessionId}/messages/read:
+  /sessions/{sessionId}/messages/chat/markread:
     post:
       consumes:
       - application/json
@@ -1460,6 +1435,536 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Marcar como lida
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/react:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma reação (emoji) para uma mensagem específica
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da reação
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReactRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reação enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Reagir a mensagem
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/audio:
+    post:
+      consumes:
+      - application/json
+      description: Envia um arquivo de áudio via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do áudio
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendAudioRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Áudio enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar áudio
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/buttons:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma mensagem com botões interativos via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados dos botões
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendButtonsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Botões enviados com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "501":
+          description: Funcionalidade não implementada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar botões interativos
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/contact:
+    post:
+      consumes:
+      - application/json
+      description: Envia um cartão de contato via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do contato
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendContactRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Contato enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar contato
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/document:
+    post:
+      consumes:
+      - application/json
+      description: Envia um documento/arquivo via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do documento
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendDocumentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Documento enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar documento
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/image:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma imagem via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da imagem
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendImageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Imagem enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar imagem
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/list:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma mensagem com lista de opções interativa via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da lista
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendListRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "501":
+          description: Funcionalidade não implementada
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar lista interativa
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/location:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma localização geográfica via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da localização
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendLocationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Localização enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar localização
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/media:
+    post:
+      consumes:
+      - application/json
+      description: Envia arquivos de mídia (imagem, vídeo, áudio, documento) via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da mídia
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendMediaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Mídia enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar mídia
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/sticker:
+    post:
+      consumes:
+      - application/json
+      description: Envia um sticker/figurinha via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do sticker
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendStickerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sticker enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar sticker
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/text:
+    post:
+      consumes:
+      - application/json
+      description: Envia uma mensagem de texto via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados da mensagem
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendTextRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Mensagem enviada com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar mensagem de texto
+      tags:
+      - messages
+  /sessions/{sessionId}/messages/send/video:
+    post:
+      consumes:
+      - application/json
+      description: Envia um vídeo via WhatsApp
+      parameters:
+      - description: ID da sessão
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Dados do vídeo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SendVideoRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Vídeo enviado com sucesso
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Dados inválidos
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Acesso negado
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Erro interno do servidor
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enviar vídeo
       tags:
       - messages
   /sessions/{sessionId}/pairphone:
@@ -1503,7 +2008,7 @@ paths:
       summary: Parear telefone
       tags:
       - sessions
-  /sessions/{sessionId}/presence:
+  /sessions/{sessionId}/presence/set:
     post:
       consumes:
       - application/json
@@ -1617,191 +2122,6 @@ paths:
       summary: Obter QR Code da sessão
       tags:
       - sessions
-  /sessions/{sessionId}/s3/config:
-    delete:
-      consumes:
-      - application/json
-      description: Remove as configurações de armazenamento S3 da sessão
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Configuração S3 removida com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: ID da sessão inválido
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: Sessão não encontrada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Deletar configuração S3
-      tags:
-      - sessions
-    get:
-      consumes:
-      - application/json
-      description: Retorna as configurações atuais de armazenamento S3 da sessão
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Configurações do S3
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: ID da sessão inválido
-          schema:
-            additionalProperties: true
-            type: object
-        "404":
-          description: Sessão não encontrada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Obter configuração S3
-      tags:
-      - sessions
-    post:
-      consumes:
-      - application/json
-      description: Configura as definições de armazenamento S3 para a sessão
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Configurações do S3
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.S3ConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: S3 configurado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Configurar S3
-      tags:
-      - sessions
-  /sessions/{sessionId}/s3/test:
-    post:
-      consumes:
-      - application/json
-      description: Testa a conectividade com o serviço S3 configurado para a sessão
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Teste de conexão S3 realizado
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: ID da sessão inválido
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro na conexão S3
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Testar conexão S3
-      tags:
-      - sessions
-  /sessions/{sessionId}/send/audio:
-    post:
-      consumes:
-      - application/json
-      description: Envia um arquivo de áudio via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do áudio
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendAudioRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Áudio enviado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar áudio
-      tags:
-      - messages
   /sessions/{sessionId}/send/bulk:
     post:
       consumes:
@@ -1836,491 +2156,6 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Enviar mensagens em lote
-      tags:
-      - messages
-  /sessions/{sessionId}/send/buttons:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma mensagem com botões interativos via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados dos botões
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendButtonsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Botões enviados com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "501":
-          description: Funcionalidade não implementada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar botões interativos
-      tags:
-      - messages
-  /sessions/{sessionId}/send/contact:
-    post:
-      consumes:
-      - application/json
-      description: Envia um cartão de contato via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do contato
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendContactRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Contato enviado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar contato
-      tags:
-      - messages
-  /sessions/{sessionId}/send/document:
-    post:
-      consumes:
-      - application/json
-      description: Envia um documento/arquivo via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do documento
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendDocumentRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Documento enviado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar documento
-      tags:
-      - messages
-  /sessions/{sessionId}/send/image:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma imagem via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da imagem
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendImageRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Imagem enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar imagem
-      tags:
-      - messages
-  /sessions/{sessionId}/send/list:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma mensagem com lista de opções interativa via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da lista
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendListRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Lista enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "501":
-          description: Funcionalidade não implementada
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar lista interativa
-      tags:
-      - messages
-  /sessions/{sessionId}/send/location:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma localização geográfica via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da localização
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendLocationRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Localização enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar localização
-      tags:
-      - messages
-  /sessions/{sessionId}/send/media:
-    post:
-      consumes:
-      - application/json
-      description: Envia arquivos de mídia (imagem, vídeo, áudio, documento) via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da mídia
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendMediaRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Mídia enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar mídia
-      tags:
-      - messages
-  /sessions/{sessionId}/send/reaction:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma reação (emoji) para uma mensagem específica
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da reação
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.ReactRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Reação enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Reagir a mensagem
-      tags:
-      - messages
-  /sessions/{sessionId}/send/sticker:
-    post:
-      consumes:
-      - application/json
-      description: Envia um sticker/figurinha via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do sticker
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendStickerRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Sticker enviado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar sticker
-      tags:
-      - messages
-  /sessions/{sessionId}/send/text:
-    post:
-      consumes:
-      - application/json
-      description: Envia uma mensagem de texto via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados da mensagem
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendTextRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Mensagem enviada com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar mensagem de texto
-      tags:
-      - messages
-  /sessions/{sessionId}/send/video:
-    post:
-      consumes:
-      - application/json
-      description: Envia um vídeo via WhatsApp
-      parameters:
-      - description: ID da sessão
-        in: path
-        name: sessionId
-        required: true
-        type: string
-      - description: Dados do vídeo
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.SendVideoRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Vídeo enviado com sucesso
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Dados inválidos
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: Acesso negado
-          schema:
-            additionalProperties: true
-            type: object
-        "500":
-          description: Erro interno do servidor
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - ApiKeyAuth: []
-      summary: Enviar vídeo
       tags:
       - messages
   /sessions/{sessionId}/status:

@@ -54,7 +54,7 @@ func (h *MessageHandler) SendMessage(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/text [post]
+// @Router /sessions/{sessionId}/messages/send/text [post]
 func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -121,7 +121,7 @@ func (h *MessageHandler) SendText(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/media [post]
+// @Router /sessions/{sessionId}/messages/send/media [post]
 func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -215,7 +215,7 @@ func (h *MessageHandler) SendMedia(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/location [post]
+// @Router /sessions/{sessionId}/messages/send/location [post]
 func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -284,7 +284,7 @@ func (h *MessageHandler) SendLocation(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/contact [post]
+// @Router /sessions/{sessionId}/messages/send/contact [post]
 func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -352,7 +352,7 @@ func (h *MessageHandler) SendContact(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/sticker [post]
+// @Router /sessions/{sessionId}/messages/send/sticker [post]
 func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -427,7 +427,7 @@ func (h *MessageHandler) SendSticker(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/reaction [post]
+// @Router /sessions/{sessionId}/messages/react [post]
 func (h *MessageHandler) ReactToMessage(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -574,7 +574,7 @@ func (h *MessageHandler) SetChatPresence(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Mensagem marcada como lida"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
-// @Router /sessions/{sessionId}/messages/read [post]
+// @Router /sessions/{sessionId}/messages/chat/markread [post]
 func (h *MessageHandler) MarkAsRead(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -667,7 +667,7 @@ func (h *MessageHandler) downloadMedia(c *fiber.Ctx, mediaType string) error {
 // @Success 200 {object} map[string]interface{} "Botões enviados com sucesso"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
-// @Router /sessions/{sessionId}/send/buttons [post]
+// @Router /sessions/{sessionId}/messages/send/buttons [post]
 func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -769,7 +769,7 @@ func (h *MessageHandler) SendButtons(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Lista enviada com sucesso"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 501 {object} map[string]interface{} "Funcionalidade não implementada"
-// @Router /sessions/{sessionId}/send/list [post]
+// @Router /sessions/{sessionId}/messages/send/list [post]
 func (h *MessageHandler) SendList(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1021,7 +1021,7 @@ func (h *MessageHandler) EditMessage(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/image [post]
+// @Router /sessions/{sessionId}/messages/send/image [post]
 func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 	var req dto.SendImageRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1043,7 +1043,7 @@ func (h *MessageHandler) SendImage(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/audio [post]
+// @Router /sessions/{sessionId}/messages/send/audio [post]
 func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 	var req dto.SendAudioRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1065,7 +1065,7 @@ func (h *MessageHandler) SendAudio(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/document [post]
+// @Router /sessions/{sessionId}/messages/send/document [post]
 func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 	var req dto.SendDocumentRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -1087,7 +1087,7 @@ func (h *MessageHandler) SendDocument(c *fiber.Ctx) error {
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 403 {object} map[string]interface{} "Acesso negado"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/send/video [post]
+// @Router /sessions/{sessionId}/messages/send/video [post]
 func (h *MessageHandler) SendVideo(c *fiber.Ctx) error {
 	var req dto.SendVideoRequest
 	if err := c.BodyParser(&req); err != nil {

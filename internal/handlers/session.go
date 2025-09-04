@@ -599,7 +599,7 @@ func (h *SessionHandler) TestProxy(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Presença definida com sucesso"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/presence [post]
+// @Router /sessions/{sessionId}/presence/set [post]
 func (h *SessionHandler) SetPresence(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -740,7 +740,7 @@ func (h *SessionHandler) CheckContacts(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Informações do contato"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
-// @Router /sessions/{sessionId}/info [post]
+// @Router /sessions/{sessionId}/contacts/info [post]
 func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -840,7 +840,7 @@ func (h *SessionHandler) GetContactInfo(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Avatar do contato"
 // @Failure 400 {object} map[string]interface{} "Dados inválidos"
 // @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
-// @Router /sessions/{sessionId}/avatar [post]
+// @Router /sessions/{sessionId}/contacts/avatar [post]
 func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -924,7 +924,7 @@ func (h *SessionHandler) GetContactAvatar(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{} "Lista de contatos"
 // @Failure 400 {object} map[string]interface{} "Sessão não encontrada"
 // @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/contacts [get]
+// @Router /sessions/{sessionId}/contacts/ [get]
 func (h *SessionHandler) GetContacts(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
 
@@ -1147,144 +1147,13 @@ func (h *SessionHandler) ConfigureProxy(c *fiber.Ctx) error {
 	})
 }
 
-// @Summary Configurar S3
-// @Description Configura as definições de armazenamento S3 para a sessão
-// @Tags sessions
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param sessionId path string true "ID da sessão"
-// @Param request body dto.S3ConfigRequest true "Configurações do S3"
-// @Success 200 {object} map[string]interface{} "S3 configurado com sucesso"
-// @Failure 400 {object} map[string]interface{} "Dados inválidos"
-// @Failure 500 {object} map[string]interface{} "Erro interno do servidor"
-// @Router /sessions/{sessionId}/s3/config [post]
-func (h *SessionHandler) ConfigureS3(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
 
-	var req dto.S3ConfigRequest
-	if err := c.BodyParser(&req); err != nil {
-		return utils.SendError(c, "Invalid request body", "INVALID_JSON", fiber.StatusBadRequest)
-	}
 
-	if !req.Enabled {
 
-		h.logger.Info().Str("session_id", sessionID).Msg("S3 disabled")
 
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"success":   true,
-			"message":   "S3 disabled successfully",
-			"enabled":   false,
-			"timestamp": time.Now().Unix(),
-		})
-	}
 
-	if req.Bucket == "" || req.Region == "" || req.AccessKeyID == "" || req.SecretAccessKey == "" {
-		return utils.SendError(c, "Bucket, region, access_key_id and secret_access_key are required", "MISSING_S3_CONFIG", fiber.StatusBadRequest)
-	}
 
-	h.logger.Info().
-		Str("session_id", sessionID).
-		Str("s3_bucket", req.Bucket).
-		Str("s3_region", req.Region).
-		Msg("S3 configured")
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"success": true,
-		"message": "S3 configured successfully",
-		"config": map[string]interface{}{
-			"enabled": true,
-			"bucket":  req.Bucket,
-			"region":  req.Region,
-		},
-		"note":      "S3 configuration saved - implementation requires database and S3 client integration",
-		"timestamp": time.Now().Unix(),
-	})
-}
-
-// @Summary Obter configuração S3
-// @Description Retorna as configurações atuais de armazenamento S3 da sessão
-// @Tags sessions
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param sessionId path string true "ID da sessão"
-// @Success 200 {object} map[string]interface{} "Configurações do S3"
-// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
-// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
-// @Router /sessions/{sessionId}/s3/config [get]
-func (h *SessionHandler) GetS3Config(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
-
-	h.logger.Info().Str("session_id", sessionID).Msg("S3 config requested")
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"success": true,
-		"config": map[string]interface{}{
-			"enabled":     false,
-			"bucket":      "",
-			"region":      "",
-			"endpoint":    "",
-			"status":      "disconnected",
-			"last_tested": nil,
-		},
-		"note":      "S3 config retrieval - implementation requires database integration",
-		"timestamp": time.Now().Unix(),
-	})
-}
-
-// @Summary Deletar configuração S3
-// @Description Remove as configurações de armazenamento S3 da sessão
-// @Tags sessions
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param sessionId path string true "ID da sessão"
-// @Success 200 {object} map[string]interface{} "Configuração S3 removida com sucesso"
-// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
-// @Failure 404 {object} map[string]interface{} "Sessão não encontrada"
-// @Router /sessions/{sessionId}/s3/config [delete]
-func (h *SessionHandler) DeleteS3Config(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
-
-	h.logger.Info().Str("session_id", sessionID).Msg("S3 config deleted")
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"success":   true,
-		"message":   "S3 configuration deleted successfully",
-		"timestamp": time.Now().Unix(),
-	})
-}
-
-// @Summary Testar conexão S3
-// @Description Testa a conectividade com o serviço S3 configurado para a sessão
-// @Tags sessions
-// @Accept json
-// @Produce json
-// @Security ApiKeyAuth
-// @Param sessionId path string true "ID da sessão"
-// @Success 200 {object} map[string]interface{} "Teste de conexão S3 realizado"
-// @Failure 400 {object} map[string]interface{} "ID da sessão inválido"
-// @Failure 500 {object} map[string]interface{} "Erro na conexão S3"
-// @Router /sessions/{sessionId}/s3/test [post]
-func (h *SessionHandler) TestS3Connection(c *fiber.Ctx) error {
-	sessionID := c.Params("sessionId")
-
-	h.logger.Info().Str("session_id", sessionID).Msg("S3 connection test requested")
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"success": false,
-		"message": "S3 not configured for this session",
-		"test_result": map[string]interface{}{
-			"connected":  false,
-			"latency_ms": 0,
-			"tested_at":  time.Now().Unix(),
-			"error":      "S3 not configured",
-		},
-		"note":      "S3 connection test - implementation requires database and S3 client integration",
-		"timestamp": time.Now().Unix(),
-	})
-}
 
 func (h *SessionHandler) ListNewsletters(c *fiber.Ctx) error {
 	sessionID := c.Params("sessionId")
